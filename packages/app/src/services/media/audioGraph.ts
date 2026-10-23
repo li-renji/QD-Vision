@@ -202,30 +202,50 @@ export function buildAudioGraph(
 /**
  * 应用变速（**唯一一处**）。
  *
- * ## 架构决策（2026-10-23 实测后定稿，勿回退）
+ * ## 做什么
  *
- * 变速只做一次：**由源自身的 `playbackRate` 承担**。
- * - 预览：`<video>` / `<audio>` 元素 ⇒ `element.playbackRate = clip.speed`
- *   （再由元素的 `preservesPitch = true` 决定是否保音高，见 PRD FR-020③）；
- * - 导出：`AudioBufferSourceNode.playbackRate = clip.speed`
- *   （见 `services/export/offlineAudioRenderer.ts`，该节点没有 `preservesPitch`）。
+ * 1. `playbackRate = speed` —— 变速（时长正确）；
+ * 2. `preservesPitch = true` —— **显式**保音高（PRD FR-020③）。
  *
- * ⚠️ 曾经的错误做法：**同时**设 `playbackRate` 和挂 WSOLA worklet
- * （`processorOptions: { rate: speed }`）⇒ 速率被应用两次，输出时长与音高都不对。
+ * 两者都作用在**音频源自身**上：
+ * - 预览侧：`MediaElementAudioSourceNode` ⇒ 经其 `mediaElement` 引用拿到
+ *   `<video>` / `<audio>` 元素来设置（元素自带这两条能力）；
+ * - 导出侧：`AudioBufferSourceNode` ⇒ 只有 `playbackRate`，**没有**
+ *   `preservesPitch` ⇒ 导出的变速音频音高会变（已由导出侧 warnings 告知）。
  *
- * ⚠️ 为什么不再用 WSOLA worklet 做变速（三条实测结论，别重新踩）：
- * 1. WSOLA 是「时间伸缩」（改时长、**保**音高），它**不能把音高还原** ——
- *    想「用 playbackRate 变速 + worklet 补偿音高」需要的是 pitch shifter
- *    （PSOLA / 相位声码器），是另一个算法，不是加个参数。
- * 2. **有界缓冲的流式处理器做不了时间伸缩**：减速时「已到达但未消费」的素材
- *    积压无界增长（固定缓冲必然被冲掉）；加速则需要尚未到达的素材。
- *    Node 逐量子实测（3 秒脉冲素材、rate=0.5）：HISTORY=4096 → 垃圾；
- *    HISTORY=65536 → 正确（间隔 0.9987s），但更长的素材仍会崩。
+ * ## ⚠️ 为什么 `preservesPitch` 必须显式设置
+ *
+ * 它的浏览器默认值恰好是 `true`，但**依赖默认值是脆弱的**：任何代码路径
+ * （或未来的浏览器改动）把它设成 `false` 就会**静默变调**，而现有测试抓不到。
+ * 因此这里显式写死。`software-engineer` 也会在元素创建处再设一次作为双保险。
+ *
+ * ## ⚠️ 已知限制：同一素材被多个不同 speed 的 clip 复用时，音频无法同时满足多个速率
+ *
+ * `previewFrameSource` 按 **assetId** 池化元素 —— 一个元素同一时刻只能有一个
+ * `playbackRate`。两个不同 speed 的 clip 共用同一元素时，**后设置的覆盖前一个**。
+ *
+ * 这是池化架构的固有限制，**不是本函数引入的**：
+ * - 画面侧能规避（按 clip 计算 `sourceTimeMs` 再 seek 共享元素，每帧重算）；
+ * - 音频侧规避不了（元素只能真实播在一个位置、一个速率）。
+ *
+ * ⇒ 本轮不修。要修得改成「一个 clip 一个元素」（内存换正确性），
+ * 或「只对当前播放头命中的 clip 设速，其余静音」。
+ *
+ * ## ⚠️ 曾经的做法（已拆除，勿回退）
+ *
+ * 这里曾同时设 `playbackRate` **和**挂 WSOLA worklet
+ * （`processorOptions: { rate: speed }`）⇒ **速率被应用两次**，时长与音高都不对。
+ *
+ * 三条实测结论（别再修一遍）：
+ * 1. WSOLA 是「时间伸缩」（改时长、**保**音高），它**不能还原音高** ——
+ *    想「playbackRate 变速 + 补偿音高」需要 pitch shifter（PSOLA / 相位声码器），
+ *    是另一个算法；worklet 的 `processorOptions` 只有 `rate` 一个字段。
+ * 2. **有界缓冲的流式处理器做不了时间伸缩**：减速时「已到达但未消费」的素材积压
+ *    无界增长（固定缓冲必然被冲掉）；加速则需要尚未到达的素材。
  * 3. 实测该 worklet 的 `rate` 对输出**没有任何影响**（rate=0.5/1/2 输出逐样本相同）
- *    ⇒ 拆掉挂载是**行为中性**的，预览听到的音频与之前完全一致。
+ *    ⇒ 拆掉挂载是**行为中性**的。
  *
- * 因此这里只保留 `playbackRate` 这一条路径；`preservePitch` / `workletModuleUrl`
- * 两个入参保留（`_` 前缀）仅为兼容既有调用方，**不再有任何作用**。
+ * 浏览器原生的 `preservesPitch` 就是 PRD FR-020③ 指定的机制，两方向都行、不截断。
  */
 function applySpeed(
   _context: BaseAudioContext,
@@ -234,10 +254,23 @@ function applySpeed(
   _preservePitch?: boolean,
   _workletModuleUrl?: string,
 ): AudioNode {
-  const withRate = source as AudioNode & { playbackRate?: AudioParam };
-  if (withRate.playbackRate) {
-    withRate.playbackRate.value = speed;
+  // 元素源（MediaElementAudioSourceNode）带 `mediaElement` 引用，能一并设置
+  // playbackRate 与 preservesPitch；导出侧的 GainNode 没有该字段 ⇒ 自动跳过。
+  const elementSource = source as AudioNode & {
+    playbackRate?: AudioParam;
+    mediaElement?: HTMLMediaElement;
+  };
+
+  if (elementSource.playbackRate) {
+    elementSource.playbackRate.value = speed;
   }
+
+  // PRD FR-020③：音频变速保持音高。显式写死，不依赖浏览器默认值。
+  const element = elementSource.mediaElement;
+  if (element) {
+    element.preservesPitch = true;
+  }
+
   return source;
 }
 

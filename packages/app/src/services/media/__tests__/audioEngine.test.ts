@@ -556,6 +556,20 @@ describe('services/media/audioEngine', () => {
       expect(contextCalls.sources[0]?.playbackRate.value).toBe(2);
     });
 
+    it('speed !== 1 时显式设置元素的 preservesPitch = true（PRD FR-020③）', () => {
+      const engine = new AudioEngine();
+      const element = makeElement();
+      // 先故意设成 false：验证本函数会**显式**写回 true，
+      // 而不是依赖浏览器默认值（默认值一旦被改就会静默变调，且现有测试抓不到）。
+      element.preservesPitch = false;
+      const doc = makeDoc([makeTrack({ clips: [makeClip({ speed: 1.5 })] })]);
+
+      engine.buildGraph(doc, () => element);
+
+      expect(element.preservesPitch).toBe(true);
+      expect(contextCalls.sources[0]?.playbackRate.value).toBe(1.5);
+    });
+
     it('speed === 1 时不进入变速分支（不创建 WSOLA 节点）', async () => {
       const engine = new AudioEngine();
       await engine.loadWorklet('/worklets/x.js');
