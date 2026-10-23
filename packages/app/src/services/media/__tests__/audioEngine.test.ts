@@ -17,7 +17,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Clip, ProjectDoc, Track } from '@clipcut/shared-types';
 import { createEmptyProject } from '../../../domain/project/factory.js';
-import { AudioEngine, audioEngine, PITCH_PRESERVE_WORKLET_NAME } from '../audioEngine.js';
+import { AudioEngine, audioEngine } from '../audioEngine.js';
 
 /** 包络事件（AudioParam 调用的记录）。 */
 interface ParamEvent {
@@ -450,21 +450,19 @@ describe('services/media/audioEngine', () => {
       expect(workletCalls.length).toBe(0);
     });
 
-    it('worklet 已加载时挂 WSOLA 节点并写入 rate 参数', async () => {
+    it('worklet 即使已加载也不挂 WSOLA 节点（变速只经 playbackRate）', async () => {
       const engine = new AudioEngine();
       await engine.loadWorklet('/worklets/x.js');
       const doc = makeDoc([makeTrack({ clips: [makeClip({ speed: 2 })] })]);
 
       const graph = engine.buildGraph(doc, () => makeElement());
 
+      // ⚠️ 架构决策见 audioGraph.applySpeed：变速只做一次（playbackRate），
+      // WSOLA worklet 已不再挂进混音图 —— 即使它已加载成功。
+      // （preservePitchAvailable 只是把调用方传入的 preservePitch 原样带回。）
       expect(graph.preservePitchAvailable).toBe(true);
-      expect(workletCalls.length).toBe(1);
-      expect(workletCalls[0]?.name).toBe(PITCH_PRESERVE_WORKLET_NAME);
-      expect(workletCalls[0]?.options).toMatchObject({
-        numberOfInputs: 1,
-        numberOfOutputs: 1,
-        processorOptions: { rate: 2 },
-      });
+      expect(workletCalls.length).toBe(0);
+      expect(contextCalls.sources[0]?.playbackRate.value).toBe(2);
     });
   });
 
@@ -544,18 +542,18 @@ describe('services/media/audioEngine', () => {
       expect(contextCalls.sources[0]?.playbackRate.value).toBe(2);
     });
 
-    it('worklet 可用时变速改由 WSOLA 节点接管（playbackRate 仍同步写入）', async () => {
+    it('变速只应用一次：只写 playbackRate，不再挂 WSOLA 节点', async () => {
       const engine = new AudioEngine();
       await engine.loadWorklet('/worklets/x.js');
       const doc = makeDoc([makeTrack({ clips: [makeClip({ speed: 2 })] })]);
 
       engine.buildGraph(doc, () => makeElement());
 
-      expect(workletCalls.length).toBe(1);
+      // ⚠️ 架构决策（audioGraph.applySpeed）：变速**只做一次**，由源自身的
+      // playbackRate 承担。曾经「同时设 playbackRate + 挂 worklet」会把速率应用
+      // 两次（时长与音高都不对），已拆除 ⇒ 即使 worklet 已加载也不再挂载。
+      expect(workletCalls.length).toBe(0);
       expect(contextCalls.sources[0]?.playbackRate.value).toBe(2);
-      // WSOLA 节点的 rate 参数也被设置为变速倍率
-      const worklet = contextCalls.sources[0]?.connected[0] as MockAudioWorkletNode | undefined;
-      expect(worklet?.parameters.get('rate')?.value).toBe(2);
     });
 
     it('speed === 1 时不进入变速分支（不创建 WSOLA 节点）', async () => {
