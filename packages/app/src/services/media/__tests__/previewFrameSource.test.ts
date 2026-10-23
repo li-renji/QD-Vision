@@ -204,11 +204,24 @@ function createFixture(options?: { readAssetBlob?: (asset: Asset) => Promise<Blo
         sync: async (): Promise<void> => undefined,
         playAll: async (): Promise<void> => undefined,
         pauseAll: (): void => undefined,
+        setMuted: (muted: boolean, assetId?: string): void => {
+          if (assetId === undefined) {
+            for (const video of elements.values()) video.muted = muted;
+            return;
+          }
+          const video = elements.get(assetId);
+          if (video) video.muted = muted;
+        },
         dispose: (): void => {
           elements.clear();
         },
         get size(): number {
           return elements.size;
+        },
+        get mutedCount(): number {
+          let count = 0;
+          for (const video of elements.values()) if (video.muted) count += 1;
+          return count;
         },
       };
     },

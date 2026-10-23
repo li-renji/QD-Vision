@@ -84,6 +84,23 @@ export default defineConfig({
   use: {
     baseURL: `http://127.0.0.1:${E2E_PORT}`,
     trace: 'off',
+    /**
+     * 预览音频（WebAudio）需要这两个 Chromium 开关：
+     *
+     * - `--autoplay-policy=no-user-gesture-required`：`AudioContext` 默认在
+     *   `suspended` 态，且 `resume()` 在没有用户手势时会被拒绝。
+     *   headless 下没有真实手势，缺这个开关 `context.state` 永远停在
+     *   `suspended`，音频链路的断言就全部失真。
+     * - `--use-fake-device-for-media-stream`：headless 没有真实音频输出设备，
+     *   `MediaRecorder` / `AudioContext` 会因找不到 sink 而不出数。
+     */
+    launchOptions: {
+      args: [
+        '--autoplay-policy=no-user-gesture-required',
+        '--use-fake-device-for-media-stream',
+        '--use-fake-ui-for-media-stream',
+      ],
+    },
     ...devices['Desktop Chrome'],
   },
   webServer: {

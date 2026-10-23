@@ -106,6 +106,24 @@ export default tseslint.config(
     ],
   },
 
+  // ============ AudioWorklet 运行时文件 ============
+  // `public/worklets/*.js` 运行在 **AudioWorklet 全局作用域**：
+  // `AudioWorkletProcessor` / `registerProcessor` 由宿主注入，浏览器全局对象里没有，
+  // 因此需要显式声明，否则 `no-undef` 会把合法的 worklet 判成错误。
+  {
+    files: ['**/public/worklets/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'script',
+      globals: {
+        AudioWorkletProcessor: 'readonly',
+        registerProcessor: 'readonly',
+        currentTime: 'readonly',
+        sampleRate: 'readonly',
+      },
+    },
+  },
+
   // ============ Node 脚本（仓库级工具） ============
   {
     // `scripts/**` 是 Node 侧的工具脚本（console / process 是真实存在的全局），

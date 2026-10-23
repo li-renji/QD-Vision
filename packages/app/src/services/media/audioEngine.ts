@@ -100,12 +100,26 @@ export class AudioEngine {
       resolveSource: (clip, track) => {
         const element = resolveElement(clip, track);
         if (!element) return null;
-        return this.mediaElementSource(context, element);
+        return this.attachElement(element);
       },
     });
 
     this.graph = graph;
     return graph;
+  }
+
+  /**
+   * 取得（并缓存）元素的音频源节点。
+   *
+   * **对外公开**是为了让 `previewAudio.ts` 在自己构建的图里复用同一个缓存 ——
+   * `createMediaElementSource` 对同一元素只能调用一次，第二次会抛
+   * `InvalidStateError`。两处共用本方法，缓存（模块级 `WeakMap`）自然一致。
+   *
+   * ⚠️ 调用方负责在拿到节点后解除元素的 `muted`，否则 WebAudio 输出会被
+   * 元素的输出闸门掐断（见 `previewAudio.ts` 文件头）。
+   */
+  attachElement(element: HTMLMediaElement): MediaElementAudioSourceNode {
+    return this.mediaElementSource(this.ensureContext(), element);
   }
 
   /** 取得（并缓存）元素的音频源节点。 */

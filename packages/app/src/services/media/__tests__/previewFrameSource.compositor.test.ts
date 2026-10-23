@@ -120,12 +120,19 @@ async function flush(): Promise<void> {
 /** 构造一个**必定返回帧**的取帧器（隔离合成器接线本身）。 */
 function createStubSource(bitmap: ImageBitmap | null): PreviewFrameSource {
   const listeners = new Set<() => void>();
+  const elementListeners = new Set<(assetId: string) => void>();
   return {
     ensureAsset: async (): Promise<boolean> => true,
     getFrame: (): ImageBitmap | null => bitmap,
     prime: async (): Promise<void> => undefined,
     setPlaying: (): void => undefined,
     setPlaybackRate: (): void => undefined,
+    getElement: (): HTMLMediaElement | null => null,
+    unmute: (): void => undefined,
+    onElementReady: (listener: (assetId: string) => void): (() => void) => {
+      elementListeners.add(listener);
+      return () => elementListeners.delete(listener);
+    },
     onFrameReady: (listener: () => void): (() => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -196,9 +203,22 @@ describe('预览取帧 → 合成器 接线（端到端）', () => {
         sync: async (): Promise<void> => undefined,
         playAll: async (): Promise<void> => undefined,
         pauseAll: (): void => undefined,
+        setMuted: (muted: boolean, assetId?: string): void => {
+          if (assetId === undefined) {
+            for (const video of poolElements.values()) video.muted = muted;
+            return;
+          }
+          const video = poolElements.get(assetId);
+          if (video) video.muted = muted;
+        },
         dispose: (): void => poolElements.clear(),
         get size(): number {
           return poolElements.size;
+        },
+        get mutedCount(): number {
+          let count = 0;
+          for (const video of poolElements.values()) if (video.muted) count += 1;
+          return count;
         },
       }),
     });

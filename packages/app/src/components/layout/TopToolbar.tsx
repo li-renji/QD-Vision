@@ -10,6 +10,7 @@ import { useTranslation } from '../../i18n/index.js';
 import { useProjectStore } from '../../state/projectStore.js';
 import { useHistoryStore } from '../../state/historyStore.js';
 import { usePlaybackStore } from '../../state/playbackStore.js';
+import { unlockPreviewAudio } from '../../services/media/previewAudio.js';
 import { redo, undo } from '../../state/actions.js';
 import { formatTimecode } from '@clipcut/shared-types';
 import { clsx } from '../../utils/clsx.js';
@@ -90,7 +91,13 @@ export function TopToolbar({
                 ? t('toolbar.pause')
                 : t('toolbar.play')
           }
-          onClick={() => usePlaybackStore.getState().togglePlay()}
+          onClick={() => {
+            // 必须同步解锁（此刻仍在用户手势栈内）—— 见 PreviewControls 同名处理
+            if (!usePlaybackStore.getState().isPlaying) {
+              void unlockPreviewAudio();
+            }
+            usePlaybackStore.getState().togglePlay();
+          }}
           icon={<Icon name={isPlaying ? 'pause' : 'play'} size={14} />}
           active={isPlaying}
           // 空工程禁用播放（与 PreviewControls 的传输控件保持一致）

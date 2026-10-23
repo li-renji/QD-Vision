@@ -90,10 +90,42 @@ export interface PreviewFrameSource {
   prime: (assetId: string, sourceMs: number) => Promise<void>;
   /** 播放状态变化：播放 / 暂停所有已就绪的视频元素。 */
   setPlaying: (playing: boolean) => void;
+  /**
+   * 取得某素材对应的媒体元素（音频接线用）。
+   *
+   * **音频必须复用这里已建好的 `<video>` 元素** —— 不能另建一个：
+   * ① 同一素材只应存在一个解码实例；
+   * ② `createMediaElementSource` 对同一元素只能调用一次，而
+   *   `AudioEngine` 用 `WeakMap` 按元素缓存 source node，两边指向同一个元素
+   *   才能复用缓存。
+   *
+   * 未就绪 / 未登记 / 图片素材（`<img>` 无音频）返回 `null`，
+   * 调用方据此安全降级（该 clip 不进混音图）。
+   */
+  getElement: (assetId: string) => HTMLMediaElement | null;
+  /**
+   * 解除某素材元素的 `muted`（接入 WebAudio 后必须调用）。
+   *
+   * ⚠️ `HTMLMediaElement.muted` 是元素输出的闸门，不只是「不直接出声」：
+   * `muted = true` 会把 `MediaElementAudioSourceNode` 的输出**一起掐断**。
+   * 见 `videoPool.setMuted` 的说明。
+   */
+  unmute: (assetId: string) => void;
   /** 播放倍速变化（同步到 `video.playbackRate`）。 */
   setPlaybackRate: (rate: number) => void;
   /** 订阅「异步帧已就绪」通知；返回取消订阅函数。 */
   onFrameReady: (listener: () => void) => () => void;
+  /**
+   * 订阅「媒体元素首次就绪」通知；返回取消订阅函数。
+   *
+   * **音频接线的存在理由**：混音图必须拿到**已就绪**的元素才能建
+   * `MediaElementAudioSourceNode`，而工程刚打开时元素还在异步
+   * `blob → objectURL → loadeddata`。没有这个订阅，就只能等下一次
+   * 工程变化才建图 —— 用户会听到「改了东西之后突然有声音」。
+   *
+   * 每个素材只触发一次（不是每帧），因此订阅方可以直接重建混音图。
+   */
+  onElementReady: (listener: (assetId: string) => void) => () => void;
   /** 已登记的素材数量（测试断言用）。 */
   readonly assetCount: number;
   /** 已就绪（可取帧）的素材数量（测试断言用）。 */
@@ -163,11 +195,27 @@ export function createPreviewFrameSource(
   const preparing = new Map<string, Promise<boolean>>();
   /** 帧就绪监听器。 */
   const frameReadyListeners = new Set<() => void>();
+  /** 元素首次就绪监听器。 */
+  const elementReadyListeners = new Set<(assetId: string) => void>();
+  /** 已经通知过「元素就绪」的素材（保证每个素材只触发一次）。 */
+  const announcedReady = new Set<string>();
   /** 已释放标记：置位后所有异步回调都必须停止写缓存。 */
   let disposed = false;
 
   const notifyFrameReady = (): void => {
     for (const listener of frameReadyListeners) listener();
+  };
+
+  /**
+   * 元素首次就绪时通知外部（音频据此重建混音图）。
+   *
+   * 只在**由未就绪转为就绪**的那一刻触发一次；图片素材也会触发，
+   * 由调用方自行判断（图片没有音频元素，`getElement` 会返回 null）。
+   */
+  const announceElementReady = (runtime: AssetRuntime): void => {
+    if (!runtime.ready || announcedReady.has(runtime.assetId)) return;
+    announcedReady.add(runtime.assetId);
+    for (const listener of elementReadyListeners) listener(runtime.assetId);
   };
 
   /** 取得（或创建）某素材的运行时状态。 */
@@ -222,6 +270,7 @@ export function createPreviewFrameSource(
     if (runtime.url !== null) {
       const existing = runtime.video ?? runtime.image;
       if (existing) runtime.ready = await waitReady(existing);
+      announceElementReady(runtime);
       return runtime.ready;
     }
 
@@ -249,6 +298,7 @@ export function createPreviewFrameSource(
     const element = runtime.video ?? runtime.image;
     if (!element) return false;
     runtime.ready = await waitReady(element);
+    announceElementReady(runtime);
     if (runtime.ready) notifyFrameReady();
     return runtime.ready;
   };
@@ -376,6 +426,29 @@ export function createPreviewFrameSource(
     }
   };
 
+  /**
+   * 取得某素材的媒体元素。
+   *
+   * 只在 `runtime.ready` 之后返回：未就绪时 `src` 可能还没挂上，
+   * 此时建 source node 会得到一个永远不出声的节点。
+   */
+  const getElement = (assetId: string): HTMLMediaElement | null => {
+    const runtime = runtimes.get(assetId);
+    if (!runtime || !runtime.ready) return null;
+    // `<img>` 不是 HTMLMediaElement —— 图片素材天然无音频，返回 null。
+    return runtime.video;
+  };
+
+  /**
+   * 解除某素材元素的静音（接入 WebAudio 后必须调用）。
+   *
+   * 走 `pool.setMuted(false, assetId)` 而不是直接改 `element.muted`：
+   * 池是元素的唯一持有者，改它才能让「重建图后再次静音/解除」保持一致。
+   */
+  const unmute = (assetId: string): void => {
+    pool.setMuted(false, assetId);
+  };
+
   const setPlaybackRate = (rate: number): void => {
     if (disposed) return;
     for (const runtime of runtimes.values()) {
@@ -387,6 +460,13 @@ export function createPreviewFrameSource(
     frameReadyListeners.add(listener);
     return () => {
       frameReadyListeners.delete(listener);
+    };
+  };
+
+  const onElementReady = (listener: (assetId: string) => void): (() => void) => {
+    elementReadyListeners.add(listener);
+    return () => {
+      elementReadyListeners.delete(listener);
     };
   };
 
@@ -409,7 +489,9 @@ export function createPreviewFrameSource(
     }
     runtimes.clear();
     preparing.clear();
+    announcedReady.clear();
     frameReadyListeners.clear();
+    elementReadyListeners.clear();
     pool.dispose();
   };
 
@@ -418,8 +500,11 @@ export function createPreviewFrameSource(
     getFrame,
     prime,
     setPlaying,
+    getElement,
+    unmute,
     setPlaybackRate,
     onFrameReady,
+    onElementReady,
     get assetCount(): number {
       return runtimes.size;
     },

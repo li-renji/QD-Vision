@@ -20,6 +20,8 @@ import { useUiStore } from '../../state/uiStore.js';
 import { usePlaybackStore } from '../../state/playbackStore.js';
 import { renderFrame } from '../../render/compositor.js';
 import { useRenderLoop } from '../../hooks/useRenderLoop.js';
+import { usePreviewAudio } from '../../hooks/usePreviewAudio.js';
+import { setActivePreviewAudio } from '../../services/media/previewAudio.js';
 import { createPreviewFrameSource } from '../../services/media/previewFrameSource.js';
 import { getBlobByKey } from '../../services/storage/blobRepo.js';
 import { clsx } from '../../utils/clsx.js';
@@ -64,6 +66,28 @@ export function PreviewCanvas({ zoomMode, className }: PreviewCanvasProps): JSX.
     },
     [doc, frameSource],
   );
+
+  /**
+   * 预览音频接线（**「没有声音」的修复点**）。
+   *
+   * 音频复用 `frameSource` 持有的 `<video>` 元素建WebAudio 混音图，
+   * 与画面走同一个 `usePlaybackStore` 时钟 —— 见 `usePreviewAudio.ts`。
+   */
+  const { controller } = usePreviewAudio(frameSource);
+
+  /**
+   * 把控制器登记为「当前预览音频」。
+   *
+   * 播放按钮（`PreviewControls` / `TopToolbar`）需要在**用户手势调用栈内**
+   * 调 `unlock()` 才能绕过浏览器自动播放策略；把控制器登记成模块级单例，
+   * 按钮就不必层层透传 props。
+   */
+  useEffect(() => {
+    setActivePreviewAudio(controller);
+    return () => {
+      setActivePreviewAudio(null);
+    };
+  }, [controller]);
 
   useRenderLoop({ onFrame: draw });
 

@@ -5,6 +5,7 @@
 import { useTranslation } from '../../i18n/index.js';
 import { usePlaybackStore } from '../../state/playbackStore.js';
 import { useProjectStore } from '../../state/projectStore.js';
+import { unlockPreviewAudio } from '../../services/media/previewAudio.js';
 import { IconButton } from '../common/IconButton.js';
 import { Icon } from '../common/Icon.js';
 import { Select } from '../common/Select.js';
@@ -36,6 +37,23 @@ export function PreviewControls(): JSX.Element {
       ? t('toolbar.pause')
       : t('toolbar.play');
 
+  /**
+   * 播放 / 暂停。
+   *
+   * ⚠️ `unlockPreviewAudio()` 必须**同步**写在 `onClick` 里（此刻仍在用户手势
+   * 调用栈内）：浏览器自动播放策略只认手势上下文，`AudioContext` 在手势之外
+   * `resume()` 会被拒绝 —— 表现正是「点了播放，画面在动，就是没声音」。
+   *
+   * 顺序也有讲究：先解锁再切播放状态，保证 `video.play()` 发生时
+   * AudioContext 已是 running。
+   */
+  const handleTogglePlay = (): void => {
+    if (!usePlaybackStore.getState().isPlaying) {
+      void unlockPreviewAudio();
+    }
+    usePlaybackStore.getState().togglePlay();
+  };
+
   return (
     <div className="flex h-10 shrink-0 items-center justify-center gap-1 border-t border-[var(--cc-border)] bg-[var(--cc-bg-panel)]">
       <IconButton
@@ -52,7 +70,7 @@ export function PreviewControls(): JSX.Element {
         label={playLabel}
         active={isPlaying}
         disabled={isTimelineEmpty}
-        onClick={() => usePlaybackStore.getState().togglePlay()}
+        onClick={handleTogglePlay}
         icon={<Icon name={isPlaying ? 'pause' : 'play'} size={14} />}
       />
       <IconButton

@@ -36,13 +36,28 @@ export {
   PITCH_PRESERVE_WORKLET_NAME,
   applyFadeEnvelope,
   buildAudioGraph,
+  isTrackAudible,
   mixDurationMs,
   mixableTracks,
   type AudioGraph,
   type AudioGraphOptions,
 } from './audioGraph.js';
 export { AudioEngine, audioEngine } from './audioEngine.js';
-export { createVideoPool, type VideoPool, type VideoPoolElement } from './videoPool.js';
+export {
+  DEFAULT_MASTER_GAIN,
+  MAX_MASTER_GAIN,
+  createPreviewAudio,
+  fadeGainAt,
+  getActivePreviewAudio,
+  getPreviewAudioDiagnostics,
+  resolveMasterGain,
+  setActivePreviewAudio,
+  unlockPreviewAudio,
+  type PreviewAudioController,
+  type PreviewAudioDiagnostics,
+  type PreviewAudioOptions,
+} from './previewAudio.js';
+export { createVideoPool, type VideoPool, type VideoPoolElement, type VideoPoolOptions } from './videoPool.js';
 export {
   createPreviewFrameSource,
   type PreviewFrameSource,

@@ -39,9 +39,29 @@ export interface AudioGraph {
   dispose: () => void;
 }
 
-/** 参与混音的轨道（音频轨 + 视频轨）。 */
+/**
+ * 参与混音的轨道（音频轨 + 视频轨）。
+ *
+ * 只做**类型**筛选；是否真的发声由 {@link isTrackAudible} 判断。
+ */
 export function mixableTracks(doc: ProjectDoc): Track[] {
   return doc.tracks.filter((track) => track.type === 'audio' || track.type === 'video');
+}
+
+/**
+ * 轨道是否发声。
+ *
+ * - `muted`：轨道头的「静音」按钮 —— 视频轨与音频轨都静音。
+ * - `hidden`：轨道头的「隐藏」按钮。**只对音频轨生效** ——
+ *   音频轨没有画面，「隐藏」是它唯一的停用开关；而视频轨的 `hidden`
+ *   按 NLE 惯例只影响画面（画布上不画），声音照常播放。
+ *
+ * 把这两条收在一处，预览与导出因此看到同一份判断。
+ */
+export function isTrackAudible(track: Track): boolean {
+  if (track.muted) return false;
+  if (track.hidden && track.type === 'audio') return false;
+  return true;
 }
 
 /**
@@ -61,7 +81,7 @@ export function buildAudioGraph(
   const preservePitch = options.preservePitch !== false;
 
   for (const track of mixableTracks(doc)) {
-    if (track.muted) continue;
+    if (!isTrackAudible(track)) continue;
 
     const bus = context.createGain();
     bus.gain.value = 1;
@@ -204,7 +224,7 @@ export function applyFadeEnvelope(
 export function mixDurationMs(doc: ProjectDoc): number {
   let max = 0;
   for (const track of mixableTracks(doc)) {
-    if (track.muted) continue;
+    if (!isTrackAudible(track)) continue;
     for (const clip of track.clips) {
       if (clip.audio.muted) continue;
       max = Math.max(max, clip.startMs + clip.durationMs);
