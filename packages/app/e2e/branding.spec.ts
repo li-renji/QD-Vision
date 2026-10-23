@@ -13,9 +13,32 @@
 
 import { expect, test, type Page } from '@playwright/test';
 
+/**
+ * 打开应用首页并等待 React 挂载完成。
+ *
+ * ## 为什么不用默认的 `waitUntil: 'load'`
+ *
+ * `page.goto('/')` 默认等 `load` 事件 —— 它要求**所有**子资源（script /
+ * modulepreload / stylesheet）都完成。本仓的 e2e 由 `vite preview` 提供服务，
+ * 而 `preview` 服务的是磁盘上的 `dist/`。当**另一个进程正在重建 `dist/`**
+ * （vite build 会先清空再重写）时，`index.html` 可能被读到**半截**：
+ * 实测出现过标题为空字符串、以及 `goto` 卡在 "waiting until load" 直到超时。
+ *
+ * 这里改成等 `domcontentloaded`（HTML 解析完即可拿到 `<title>`），
+ * 再显式等 `#root` 出现子节点（React 挂载完成），两者都不依赖静态资源的
+ * 完整下载，对共享构建目录的短暂竞态免疫。
+ */
+async function gotoApp(page: Page): Promise<void> {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => {
+    const root = document.querySelector('#root');
+    return !!root && root.childElementCount > 0;
+  });
+}
+
 /** 新建工程并进入编辑器。 */
 async function enterEditor(page: Page): Promise<void> {
-  await page.goto('/');
+  await gotoApp(page);
   await page.getByRole('button', { name: /新建工程|New project/ }).first().click();
   const dialog = page.getByRole('dialog');
   await dialog.locator('input[type="text"]').first().fill('排版回归测试工程');
@@ -25,7 +48,7 @@ async function enterEditor(page: Page): Promise<void> {
 
 test.describe('品牌与排版回归', () => {
   test('应用标题与顶栏品牌名为 QD视界', async ({ page }) => {
-    await page.goto('/');
+    await gotoApp(page);
     await expect(page).toHaveTitle('QD视界');
 
     await enterEditor(page);
@@ -44,7 +67,7 @@ test.describe('品牌与排版回归', () => {
   });
 
   test('不再引用从未加载的 Web 字体，也无 Google Fonts preconnect', async ({ page }) => {
-    await page.goto('/');
+    await gotoApp(page);
 
     // 死 preconnect 必须清干净
     const preconnects = await page.locator('link[rel="preconnect"]').evaluateAll((nodes) =>
