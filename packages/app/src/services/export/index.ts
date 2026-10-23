@@ -24,6 +24,21 @@ export {
   type WebCodecsExportOptions,
 } from './webCodecsExporter.js';
 export {
+  DEFAULT_OFFLINE_CHANNEL_COUNT,
+  DEFAULT_OFFLINE_SAMPLE_RATE,
+  MAX_MASTER_GAIN,
+  collectMixableAssetIds,
+  hasAudibleAudio,
+  peakAmplitude,
+  renderOfflineMix,
+  resolveClipScheduling,
+  resolveExportMasterGain,
+  type ClipScheduling,
+  type OfflineMixOptions,
+  type OfflineMixResult,
+  type OfflineRenderContext,
+} from './offlineAudioRenderer.js';
+export {
   exportWithMediaRecorder,
   type MediaRecorderExportOptions,
   type MediaRecorderExportResult,
