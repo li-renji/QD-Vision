@@ -7,6 +7,7 @@ import { useProjectStore } from '../../state/projectStore.js';
 import { resizeCanvas } from '../../state/actions.js';
 import { Select } from '../common/Select.js';
 import { IconButton } from '../common/IconButton.js';
+import { Icon } from '../common/Icon.js';
 import type { AspectPreset } from '@clipcut/shared-types';
 
 /** 比例预设。 */
@@ -59,7 +60,7 @@ export function CanvasSettingsBar({
         ariaLabel={t('preview.zoomFit')}
       />
 
-      <span className="ml-auto font-mono text-[10px] text-[var(--cc-fg-muted)]">
+      <span className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-[var(--cc-fg-muted)]">
         {canvas.width}×{canvas.height} @ {canvas.fps}fps
       </span>
 
@@ -73,7 +74,7 @@ export function CanvasSettingsBar({
             void element.requestFullscreen?.();
           }
         }}
-        icon={<span>⛶</span>}
+        icon={<Icon name="film" size={14} />}
       />
     </div>
   );

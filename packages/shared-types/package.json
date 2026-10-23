@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "ClipCut Web 跨包类型与协议（零运行时依赖）",
+  "description": "QD视界 跨包类型与协议（零运行时依赖）",
   "license": "MIT",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

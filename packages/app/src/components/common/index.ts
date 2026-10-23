@@ -4,6 +4,7 @@
 
 export { Button, type ButtonProps, type ButtonSize, type ButtonVariant } from './Button.js';
 export { IconButton, type IconButtonProps } from './IconButton.js';
+export { Icon, type IconName, type IconProps } from './Icon.js';
 export { Dialog, type DialogProps } from './Dialog.js';
 export { TabPanel, Tabs, type TabItem, type TabsProps } from './Tabs.js';
 export { Select, type SelectOption, type SelectProps } from './Select.js';

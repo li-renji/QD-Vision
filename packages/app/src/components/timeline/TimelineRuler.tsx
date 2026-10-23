@@ -109,7 +109,7 @@ export function TimelineRuler({ widthPx }: TimelineRulerProps): JSX.Element {
               }
             />
             {tick.major ? (
-              <span className="absolute left-1 top-0 font-mono text-[9px] text-[var(--cc-fg-muted)]">
+              <span className="absolute left-1 top-0 font-mono text-[10px] leading-4 tabular-nums text-[var(--cc-fg-muted)]">
                 {tick.label}
               </span>
             ) : null}

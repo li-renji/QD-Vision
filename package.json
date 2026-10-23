@@ -1,9 +1,9 @@
 {
-  "name": "clipcut-web",
+  "name": "qd-shijie",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "ClipCut Web · 纯浏览器视频剪辑器（零安装 / 素材不出本地 / AI 可插拔）",
+  "description": "QD视界 · 纯浏览器视频剪辑器（零安装 / 素材不出本地 / AI 可插拔）",
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0"

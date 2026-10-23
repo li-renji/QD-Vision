@@ -1,4 +1,4 @@
-# ClipCut Web
+# QD视界
 
 > **纯浏览器视频剪辑器** · 零安装 · 素材不出本地 · AI 能力可插拔
 > 版本：`1.0.0` · 许可证：[MIT](./LICENSE)
@@ -45,9 +45,11 @@ pnpm build        # 四个包依次构建，产物为纯静态资源
 # 4. 预览生产产物
 pnpm preview      # → http://127.0.0.1:4173
 
-# 5. 端到端冒烟（需要一次性安装浏览器）
+# 5. 端到端冒烟 + 品牌/排版回归（需要一次性安装浏览器）
 pnpm exec playwright install chromium
 pnpm --filter @clipcut/app exec playwright test
+#   e2e/smoke.spec.ts    —— 启动 / 新建工程 / 导出面板
+#   e2e/branding.spec.ts —— 品牌名、字体栈、轨道头对齐与轨道名可读宽度
 ```
 
 其它脚本：
@@ -80,7 +82,7 @@ pnpm check              # lint + typecheck + test + build + schema:check + check
 ## 目录结构
 
 ```
-clipcut-web/
+qd-shijie/
 ├─ packages/
 │  ├─ app/               # 主应用（Vite + React 18 + TS 5）
 │  │  ├─ src/platform/   # PlatformBridge 抽象层（唯一允许碰 window.* 文件 API 的地方）

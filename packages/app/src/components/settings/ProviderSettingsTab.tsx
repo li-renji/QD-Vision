@@ -11,6 +11,7 @@ import { setAiSettings } from '../../state/actions.js';
 import { TextField } from '../common/TextField.js';
 import { Select } from '../common/Select.js';
 import { Button } from '../common/Button.js';
+import { Icon } from '../common/Icon.js';
 import { toast } from '../common/Toast.js';
 
 /**
@@ -96,10 +97,11 @@ export function ProviderSettingsTab(): JSX.Element {
                         <Button
                           size="sm"
                           variant="ghost"
+                          aria-label={revealed[key] ? t('settings.apiKeyHide') : t('settings.apiKeyShow')}
+                          title={revealed[key] ? t('settings.apiKeyHide') : t('settings.apiKeyShow')}
                           onClick={() => setRevealed((state) => ({ ...state, [key]: !state[key] }))}
-                        >
-                          {revealed[key] ? '🙈' : '👁'}
-                        </Button>
+                          icon={<Icon name={revealed[key] ? 'eye-off' : 'eye'} size={14} />}
+                        />
                       </div>
                     </div>
                   );

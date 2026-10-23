@@ -5,8 +5,8 @@
  */
 export const enUS: Record<string, string> = {
   // App
-  'app.name': 'ClipCut Web',
-  'app.tagline': 'Browser-only video editor · your media never leaves the device',
+  'app.name': 'QD视界',
+  'app.tagline': 'Browser-only video editor · zero install · media stays local · pluggable AI',
   'app.loading': 'Loading…',
 
   // Project list
@@ -93,6 +93,10 @@ export const enUS: Record<string, string> = {
   'media.needsTranscode': 'Needs transcoding',
   'media.dropHint': 'Drop to import',
   'media.imported': 'Imported {imported}, failed {failed}',
+  'media.sort.label': 'Sort by',
+  'media.sort.importedAt': 'Import time',
+  'media.sort.name': 'Name',
+  'media.sort.duration': 'Duration',
   'media.onlineUnavailable': 'No media library API key configured — showing local media only',
   'media.onlineNotImplemented': 'The online media library will be available in a later release',
   'media.connectorNotImplemented': 'Third-party connectors will be available in a later release',
@@ -133,6 +137,7 @@ export const enUS: Record<string, string> = {
   'timeline.tooShort.actionRight': 'Move the playhead to after {min}ms.',
   'timeline.tooShort.actionLeft': 'Move the playhead to before {min}ms.',
   'timeline.zoomFit': 'Fit',
+  'timeline.clips': 'clips',
   'timeline.zoom100': '100%',
   'timeline.trackHeight': 'Track height',
   'timeline.addText': 'Add text',
@@ -250,6 +255,8 @@ export const enUS: Record<string, string> = {
   'settings.baseUrl': 'Base URL',
   'settings.model': 'Model',
   'settings.apiKey': 'API key',
+  'settings.apiKeyShow': 'Show API key',
+  'settings.apiKeyHide': 'Hide API key',
   'settings.apiKeyHint':
     'The key is stored only in your local browser IndexedDB and is never uploaded to any server.',
   'settings.providerImport': 'Import config',
@@ -262,6 +269,9 @@ export const enUS: Record<string, string> = {
   'settings.compatChrome': 'Chrome / Edge 111+: full support',
   'settings.compatSafari': 'Safari 16.4+: partially degraded (AAC encoding limited)',
   'settings.compatFirefox': 'Firefox: limited WebCodecs — use the fallback export mode',
+  'about.localOnly':
+    'This is a fully client-side app: all media and project data stay in your browser’s local IndexedDB and are never uploaded to any server.',
+  'about.identifier': 'App ID',
 
   // Common
   'common.ok': 'OK',

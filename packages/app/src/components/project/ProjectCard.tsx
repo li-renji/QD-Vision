@@ -6,6 +6,7 @@ import type { ProjectListItem } from '../../services/storage/projectRepo.js';
 import { formatDateTime } from '../../utils/format.js';
 import { formatDuration } from '@clipcut/shared-types';
 import { useTranslation } from '../../i18n/index.js';
+import { Icon } from '../common/Icon.js';
 
 /** ProjectCard 属性。 */
 export interface ProjectCardProps {
@@ -42,9 +43,9 @@ export function ProjectCard({ project, onOpen, onDelete }: ProjectCardProps): JS
           type="button"
           aria-label={t('project.list.delete')}
           onClick={() => onDelete(project.projectId)}
-          className="rounded bg-black/50 px-1.5 py-0.5 text-[10px] text-[var(--cc-danger)]"
+          className="inline-flex h-5 w-5 items-center justify-center rounded bg-black/50 text-[var(--cc-danger)] transition-colors hover:bg-black/75"
         >
-          ✕
+          <Icon name="close" size={12} />
         </button>
       </div>
     </div>

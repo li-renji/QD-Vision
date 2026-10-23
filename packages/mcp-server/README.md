@@ -1,6 +1,6 @@
 # @clipcut/mcp-server
 
-ClipCut Web 的 **MCP Server 骨架**（stdio + WebSocket 本地通道）。
+QD视界的 **MCP Server 骨架**（stdio + WebSocket 本地通道）。
 
 ## V1.0 交付范围
 

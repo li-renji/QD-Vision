@@ -1,6 +1,6 @@
 # @clipcut/ai-provider-sdk
 
-ClipCut Web 的 **AI Provider 抽象与路由**包。
+QD视界的 **AI Provider 抽象与路由**包。
 
 ## 定位
 

@@ -12,7 +12,9 @@ import { importFiles } from '../../services/media/assetService.js';
 import { getPlatformBridge } from '../../platform/index.js';
 import { FILE_ACCEPT } from '../../platform/fileTypes.js';
 import { toast } from '../common/Toast.js';
+import { Button } from '../common/Button.js';
 import { EmptyState } from '../common/EmptyState.js';
+import { Icon } from '../common/Icon.js';
 import { ConfirmDialog } from '../common/ConfirmDialog.js';
 import { TextField } from '../common/TextField.js';
 import { MediaGrid } from './MediaGrid.js';
@@ -121,29 +123,37 @@ export function MediaPanel(): JSX.Element {
 
   return (
     <div className="flex h-full flex-col" onDragOver={(event) => event.preventDefault()}>
-      <div className="flex items-center justify-between px-3 py-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--cc-fg-secondary)]">
-          {t('media.title')}
-        </h2>
-        <span className="text-[11px] text-[var(--cc-fg-muted)]">{list.length}</span>
+      <div className="flex items-center justify-between gap-1 px-3 py-2">
+        <h2 className="cc-label">{t('media.title')}</h2>
+        <div className="flex min-w-0 items-center gap-1">
+          <span className="shrink-0 text-[11px] tabular-nums text-[var(--cc-fg-muted)]">
+            {list.length}
+          </span>
+          {/* 导入按钮放在标题行：素材面板最窄可拖到 160px，工具栏那一行放不下。 */}
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => {
+              void getPlatformBridge()
+                .readFile({ accept: FILE_ACCEPT.split(','), multiple: true })
+                .then((files) => doImport(files))
+                .catch(() => {
+                  /* 用户取消 */
+                });
+            }}
+            className="shrink-0"
+            icon={<Icon name="plus" size={13} />}
+          >
+            {t('media.import')}
+          </Button>
+        </div>
       </div>
 
-      <MediaToolbar
-        onImport={() => {
-          void getPlatformBridge()
-            .readFile({ accept: FILE_ACCEPT.split(','), multiple: true })
-            .then((files) => doImport(files))
-            .catch(() => {
-              /* 用户取消 */
-            });
-        }}
-        onSortChange={setSort}
-        sort={sort}
-      />
+      <MediaToolbar onSortChange={setSort} sort={sort} />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {list.length === 0 ? (
-          <EmptyState title={t('media.empty')} icon="🎞" />
+          <EmptyState title={t('media.empty')} icon={<Icon name="film" size={30} />} />
         ) : (
           <MediaGrid
             assets={list}

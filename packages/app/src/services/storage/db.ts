@@ -105,7 +105,8 @@ export function getDb(): Promise<IDBPDatabase<ClipCutDB>> {
         }
       },
       blocked() {
-        console.warn('[clipcut] IndexedDB 升级被其它标签页阻塞，请关闭其它 ClipCut 标签页。');
+        // `[clipcut]` 是日志前缀，与 `clipcut:` 存储键前缀成对出现，保持不变（改了会和既有日志约定脱节）。
+        console.warn('[clipcut] IndexedDB 升级被其它标签页阻塞，请关闭其它 QD视界 标签页。');
       },
     });
   }

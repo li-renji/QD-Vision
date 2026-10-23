@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "ClipCut Web 主应用（Vite + React + TypeScript）",
+  "description": "QD视界 主应用（Vite + React + TypeScript）",
   "license": "MIT",
   "scripts": {
     "dev": "vite",

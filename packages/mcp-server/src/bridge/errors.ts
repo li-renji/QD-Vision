@@ -20,7 +20,7 @@ export class ChannelError extends Error {
 
 /** 通道已断开。 */
 export class ChannelDisconnectedError extends ChannelError {
-  constructor(message = '与剪辑内核的通道已断开，请确认 ClipCut Web 已打开并已连接。') {
+  constructor(message = '与剪辑内核的通道已断开，请确认 QD视界 已打开并已连接。') {
     super(McpErrorCode.CHANNEL_DISCONNECTED, message);
     this.name = 'ChannelDisconnectedError';
   }
@@ -47,7 +47,7 @@ export class NotImplementedError extends ChannelError {
   constructor(tool: string) {
     super(
       McpErrorCode.NOT_IMPLEMENTED,
-      `工具「${tool}」在 ClipCut Web V1.0 中为设计骨架，尚未实现（not implemented in v1.0）。`,
+      `工具「${tool}」在 QD视界 V1.0 中为设计骨架，尚未实现（not implemented in v1.0）。`,
     );
     this.name = 'NotImplementedError';
   }

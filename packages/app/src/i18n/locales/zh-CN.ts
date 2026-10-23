@@ -5,8 +5,8 @@
  */
 export const zhCN: Record<string, string> = {
   // 应用
-  'app.name': 'ClipCut Web',
-  'app.tagline': '纯浏览器视频剪辑器 · 素材不出本地',
+  'app.name': 'QD视界',
+  'app.tagline': '纯浏览器视频剪辑器 · 零安装 · 素材不出本地 · AI 能力可插拔',
   'app.loading': '加载中…',
 
   // 工程列表
@@ -92,6 +92,10 @@ export const zhCN: Record<string, string> = {
   'media.needsTranscode': '需转码',
   'media.dropHint': '松开以导入素材',
   'media.imported': '导入 {imported} 个，失败 {failed} 个',
+  'media.sort.label': '排序方式',
+  'media.sort.importedAt': '按导入时间',
+  'media.sort.name': '按名称',
+  'media.sort.duration': '按时长',
   'media.onlineUnavailable': '未配置素材库 API Key，当前仅显示本地素材',
   'media.onlineNotImplemented': '在线素材库将在后续版本开放',
   'media.connectorNotImplemented': '第三方连接器将在后续版本开放',
@@ -132,6 +136,7 @@ export const zhCN: Record<string, string> = {
   'timeline.tooShort.actionRight': '请将播放头右移至 {min}ms 之后。',
   'timeline.tooShort.actionLeft': '请将播放头左移至 {min}ms 之前。',
   'timeline.zoomFit': '适应',
+  'timeline.clips': '个片段',
   'timeline.zoom100': '100%',
   'timeline.trackHeight': '轨道高度',
   'timeline.addText': '添加文字',
@@ -249,6 +254,8 @@ export const zhCN: Record<string, string> = {
   'settings.baseUrl': '服务地址',
   'settings.model': '模型',
   'settings.apiKey': 'API Key',
+  'settings.apiKeyShow': '显示 API Key',
+  'settings.apiKeyHide': '隐藏 API Key',
   'settings.apiKeyHint': 'Key 仅存储在你本地浏览器的 IndexedDB 中，不会上传到任何服务器。',
   'settings.providerImport': '导入配置',
   'settings.providerExport': '导出配置',
@@ -260,6 +267,9 @@ export const zhCN: Record<string, string> = {
   'settings.compatChrome': 'Chrome / Edge 111+：全功能',
   'settings.compatSafari': 'Safari 16.4+：部分降级（AAC 编码受限）',
   'settings.compatFirefox': 'Firefox：WebCodecs 有限，建议使用兜底导出模式',
+  'about.localOnly':
+    '本应用为纯前端静态应用：所有素材与工程数据仅保存在本机浏览器 IndexedDB 中，不会上传到任何服务器。',
+  'about.identifier': '应用标识',
 
   // 通用
   'common.ok': '确定',

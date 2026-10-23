@@ -9,7 +9,7 @@
 
 import { expect, test } from '@playwright/test';
 
-test.describe('ClipCut Web 冒烟', () => {
+test.describe('QD视界 冒烟', () => {
   test('应用启动并显示工程列表', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: /我的工程|My projects/ })).toBeVisible();

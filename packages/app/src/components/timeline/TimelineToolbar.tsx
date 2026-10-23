@@ -16,6 +16,7 @@ import {
 import { toast } from '../common/Toast.js';
 import { Button } from '../common/Button.js';
 import { IconButton } from '../common/IconButton.js';
+import { Icon } from '../common/Icon.js';
 import { Select } from '../common/Select.js';
 import { Tooltip } from '../common/Tooltip.js';
 import { MAX_PX_PER_SECOND, MIN_PX_PER_SECOND } from '../../state/uiStore.js';
@@ -76,8 +77,9 @@ export function TimelineToolbar(): JSX.Element {
             variant="ghost"
             disabled={splitBlocked}
             onClick={() => report(splitSelectedClip())}
+            icon={<Icon name="scissors" size={13} />}
           >
-            ✂ {t('timeline.split')}
+            {t('timeline.split')}
           </Button>
         </span>
       </Tooltip>
@@ -86,44 +88,51 @@ export function TimelineToolbar(): JSX.Element {
         variant="ghost"
         disabled={selectedClipIds.length === 0}
         onClick={() => report(deleteSelectedClips())}
+        icon={<Icon name="trash" size={13} />}
       >
-        🗑 {t('timeline.delete')}
+        {t('timeline.delete')}
       </Button>
       <Button
         size="sm"
         variant="ghost"
         disabled={selectedClipIds.length === 0}
         onClick={() => report(copySelectedClips())}
+        icon={<Icon name="copy" size={13} />}
       >
-        ⧉ {t('timeline.copy')}
+        {t('timeline.copy')}
       </Button>
-      <Button size="sm" variant="ghost" onClick={() => report(pasteClips())}>
-        📋 {t('timeline.paste')}
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => report(pasteClips())}
+        icon={<Icon name="clipboard" size={13} />}
+      >
+        {t('timeline.paste')}
       </Button>
 
-      <div className="mx-1 h-4 w-px bg-[var(--cc-border)]" />
+      <div className="mx-1 h-4 w-px shrink-0 bg-[var(--cc-border)]" />
 
       <IconButton
         label={snapEnabled ? t('timeline.snapOn') : t('timeline.snapOff')}
         active={snapEnabled}
         onClick={() => setSnapEnabled(!snapEnabled)}
-        icon={<span>🧲</span>}
+        icon={<Icon name="magnet" size={14} />}
       />
 
-      <div className="mx-1 h-4 w-px bg-[var(--cc-border)]" />
+      <div className="mx-1 h-4 w-px shrink-0 bg-[var(--cc-border)]" />
 
       <IconButton
         label={t('timeline.zoomOut')}
         onClick={() => setPxPerSecond(pxPerSecond / 1.4)}
-        icon={<span>−</span>}
+        icon={<Icon name="minus" size={14} />}
       />
-      <span className="w-14 text-center font-mono text-[10px] text-[var(--cc-fg-muted)]">
+      <span className="w-16 shrink-0 text-center font-mono text-[11px] tabular-nums text-[var(--cc-fg-muted)]">
         {pxPerSecond.toFixed(0)}px/s
       </span>
       <IconButton
         label={t('timeline.zoomIn')}
         onClick={() => setPxPerSecond(pxPerSecond * 1.4)}
-        icon={<span>＋</span>}
+        icon={<Icon name="plus" size={14} />}
       />
       <Button
         size="sm"
@@ -134,7 +143,7 @@ export function TimelineToolbar(): JSX.Element {
         {t('timeline.zoomFit')}
       </Button>
 
-      <div className="ml-auto flex items-center gap-1">
+      <div className="ml-auto flex shrink-0 items-center gap-1">
         <Select
           value=""
           onValueChange={(value) => {
@@ -149,7 +158,7 @@ export function TimelineToolbar(): JSX.Element {
             }
           }}
           options={[
-            { value: '', label: `＋ ${t('timeline.addTrack')}` },
+            { value: '', label: t('timeline.addTrack') },
             { value: 'video', label: t('timeline.addTrack.video') },
             { value: 'audio', label: t('timeline.addTrack.audio') },
             { value: 'text', label: t('timeline.addTrack.text') },

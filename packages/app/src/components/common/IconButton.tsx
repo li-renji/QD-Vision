@@ -11,9 +11,20 @@ export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>
   /** 无障碍标签（同时作为 tooltip 文案） */
   label: string;
   icon: ReactNode;
-  size?: 'sm' | 'md';
+  /**
+   * 按钮尺寸：`xs` = 18px（轨道头等极紧凑场景）、`sm` = 20px、
+   * `md` = 28px（工具栏默认）。
+   */
+  size?: 'xs' | 'sm' | 'md';
   active?: boolean;
 }
+
+/** 各尺寸对应的方块边长（px）。 */
+const SIZE_CLASS: Record<'xs' | 'sm' | 'md', string> = {
+  xs: 'h-[18px] w-[18px]',
+  sm: 'h-5 w-5',
+  md: 'h-7 w-7',
+};
 
 /** 图标按钮。 */
 export function IconButton({
@@ -35,7 +46,7 @@ export function IconButton({
             'inline-flex items-center justify-center rounded transition-colors',
             'focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--cc-accent)]',
             'disabled:cursor-not-allowed disabled:opacity-40',
-            size === 'sm' ? 'h-5 w-5' : 'h-7 w-7',
+            SIZE_CLASS[size],
             active
               ? 'bg-[var(--cc-accent)] text-white'
               : 'text-[var(--cc-fg-secondary)] hover:bg-[var(--cc-bg-elevated)] hover:text-[var(--cc-fg-primary)]',

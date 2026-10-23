@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "ClipCut Web MCP Server 骨架（stdio + WebSocket 本地通道）",
+  "description": "QD视界 MCP Server 骨架（stdio + WebSocket 本地通道）",
   "license": "MIT",
   "bin": {
     "clipcut-mcp-server": "./dist/index.js"

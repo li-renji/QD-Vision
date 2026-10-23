@@ -6,6 +6,7 @@ import { useTranslation } from '../../i18n/index.js';
 import { usePlaybackStore } from '../../state/playbackStore.js';
 import { useProjectStore } from '../../state/projectStore.js';
 import { IconButton } from '../common/IconButton.js';
+import { Icon } from '../common/Icon.js';
 import { Select } from '../common/Select.js';
 import { SHUTTLE_RATES } from '../../hooks/useHotkeys.js';
 
@@ -24,31 +25,31 @@ export function PreviewControls(): JSX.Element {
       <IconButton
         label={t('toolbar.toStart')}
         onClick={() => usePlaybackStore.getState().seekToStart(durationMs)}
-        icon={<span>⏮</span>}
+        icon={<Icon name="skip-start" size={14} />}
       />
       <IconButton
         label={t('toolbar.prevFrame')}
         onClick={() => usePlaybackStore.getState().stepFrame(-1)}
-        icon={<span>◀|</span>}
+        icon={<Icon name="step-start" size={14} />}
       />
       <IconButton
         label={isPlaying ? t('toolbar.pause') : t('toolbar.play')}
         active={isPlaying}
         onClick={() => usePlaybackStore.getState().togglePlay()}
-        icon={<span>{isPlaying ? '⏸' : '▶'}</span>}
+        icon={<Icon name={isPlaying ? 'pause' : 'play'} size={14} />}
       />
       <IconButton
         label={t('toolbar.nextFrame')}
         onClick={() => usePlaybackStore.getState().stepFrame(1)}
-        icon={<span>|▶</span>}
+        icon={<Icon name="step-end" size={14} />}
       />
       <IconButton
         label={t('toolbar.toEnd')}
         onClick={() => usePlaybackStore.getState().seekToEnd(durationMs)}
-        icon={<span>⏭</span>}
+        icon={<Icon name="skip-end" size={14} />}
       />
 
-      <div className="mx-2 h-4 w-px bg-[var(--cc-border)]" />
+      <div className="mx-2 h-4 w-px shrink-0 bg-[var(--cc-border)]" />
 
       <Select
         value={String(playbackRate)}

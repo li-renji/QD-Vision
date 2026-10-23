@@ -1,6 +1,6 @@
 # @clipcut/shared-types
 
-ClipCut Web 的**跨包类型与协议包**。
+QD视界的**跨包类型与协议包**。
 
 ## 设计原则
 

@@ -7,6 +7,7 @@ import type { Asset } from '@clipcut/shared-types';
 import { useTranslation } from '../../i18n/index.js';
 import { formatBytes, formatResolution } from '../../utils/format.js';
 import { formatDuration } from '@clipcut/shared-types';
+import { Icon } from '../common/Icon.js';
 import { clsx } from '../../utils/clsx.js';
 
 /** 拖拽数据类型。 */
@@ -124,9 +125,9 @@ export const MediaCard = memo(function MediaCard({
             event.stopPropagation();
             onRename(asset.id);
           }}
-          className="rounded bg-black/60 px-1 text-[10px] text-white"
+          className="inline-flex h-5 w-5 items-center justify-center rounded bg-black/60 text-white transition-colors hover:bg-black/80"
         >
-          ✎
+          <Icon name="pencil" size={12} />
         </button>
         <button
           type="button"
@@ -135,9 +136,9 @@ export const MediaCard = memo(function MediaCard({
             event.stopPropagation();
             onDelete(asset.id);
           }}
-          className="rounded bg-black/60 px-1 text-[10px] text-[var(--cc-danger)]"
+          className="inline-flex h-5 w-5 items-center justify-center rounded bg-black/60 text-[var(--cc-danger)] transition-colors hover:bg-black/80"
         >
-          ✕
+          <Icon name="close" size={12} />
         </button>
       </div>
     </div>

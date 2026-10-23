@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://clipcut.dev/schema/project.schema.json",
-  "title": "ClipCut Web 工程文件",
-  "description": "ClipCut Web 工程（.clipcut.json）的 JSON Schema —— 唯一真源",
+  "title": "QD视界 工程文件",
+  "description": "QD视界 工程（.clipcut.json）的 JSON Schema —— 唯一真源",
   "type": "object",
   "required": [
     "schemaVersion",

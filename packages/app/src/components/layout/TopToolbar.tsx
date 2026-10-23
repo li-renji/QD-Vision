@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../common/Button.js';
 import { IconButton } from '../common/IconButton.js';
+import { Icon } from '../common/Icon.js';
 import { useTranslation } from '../../i18n/index.js';
 import { useProjectStore } from '../../state/projectStore.js';
 import { useHistoryStore } from '../../state/historyStore.js';
@@ -56,8 +57,8 @@ export function TopToolbar({
     <header
       className="flex h-toolbar shrink-0 items-center gap-3 border-b border-[var(--cc-border)] bg-[var(--cc-bg-panel)] px-3"
     >
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-semibold tracking-wide text-[var(--cc-fg-primary)]">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="shrink-0 text-sm font-semibold tracking-wide text-[var(--cc-fg-primary)]">
           {t('app.name')}
         </span>
         <Button size="sm" variant="ghost" onClick={onOpenProjects}>
@@ -68,45 +69,45 @@ export function TopToolbar({
         </Button>
       </div>
 
-      <div className="mx-2 h-5 w-px bg-[var(--cc-border)]" />
+      <div className="mx-2 h-5 w-px shrink-0 bg-[var(--cc-border)]" />
 
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1">
         <IconButton
           label={t('toolbar.toStart')}
           onClick={() => usePlaybackStore.getState().seekToStart(durationMs)}
-          icon={<span>⏮</span>}
+          icon={<Icon name="skip-start" size={14} />}
         />
         <IconButton
           label={t('toolbar.prevFrame')}
           onClick={() => usePlaybackStore.getState().stepFrame(-1)}
-          icon={<span>◀|</span>}
+          icon={<Icon name="step-start" size={14} />}
         />
         <IconButton
           label={isPlaying ? t('toolbar.pause') : t('toolbar.play')}
           onClick={() => usePlaybackStore.getState().togglePlay()}
-          icon={<span>{isPlaying ? '⏸' : '▶'}</span>}
+          icon={<Icon name={isPlaying ? 'pause' : 'play'} size={14} />}
           active={isPlaying}
         />
         <IconButton
           label={t('toolbar.nextFrame')}
           onClick={() => usePlaybackStore.getState().stepFrame(1)}
-          icon={<span>|▶</span>}
+          icon={<Icon name="step-end" size={14} />}
         />
         <IconButton
           label={t('toolbar.toEnd')}
           onClick={() => usePlaybackStore.getState().seekToEnd(durationMs)}
-          icon={<span>⏭</span>}
+          icon={<Icon name="skip-end" size={14} />}
         />
       </div>
 
-      <div className="font-mono text-xs tabular-nums text-[var(--cc-fg-secondary)]">
+      <div className="shrink-0 font-mono text-xs tabular-nums text-[var(--cc-fg-secondary)]">
         {t('toolbar.timecode', {
           current: timecode,
           total: formatTimecode(durationMs, fps),
         })}
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-2">
         <div className="flex items-center gap-1">
           <IconButton
             label={t('toolbar.undo')}
@@ -114,7 +115,7 @@ export function TopToolbar({
             onClick={() => {
               undo();
             }}
-            icon={<span>↶</span>}
+            icon={<Icon name="undo" size={14} />}
           />
           <IconButton
             label={t('toolbar.redo')}
@@ -122,21 +123,26 @@ export function TopToolbar({
             onClick={() => {
               redo();
             }}
-            icon={<span>↷</span>}
+            icon={<Icon name="redo" size={14} />}
           />
         </div>
 
         <span
           className={clsx(
-            'text-[11px]',
+            'shrink-0 text-[11px]',
             dirty ? 'text-[var(--cc-warning)]' : 'text-[var(--cc-fg-muted)]',
           )}
         >
           {dirty ? t('toolbar.unsaved') : t('toolbar.saved')}
         </span>
 
-        <Button size="sm" variant="ghost" onClick={onOpenSettings}>
-          ⚙ {t('toolbar.settings')}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onOpenSettings}
+          icon={<Icon name="settings" size={14} />}
+        >
+          {t('toolbar.settings')}
         </Button>
       </div>
     </header>

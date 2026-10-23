@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * ESLint Flat Config —— ClipCut Web
+ * ESLint Flat Config —— QD视界
  *
  * 本文件是「架构硬约束」的可执行版本，包含三条分层规则：
  *

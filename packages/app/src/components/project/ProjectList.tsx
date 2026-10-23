@@ -11,6 +11,7 @@ import {
 } from '../../services/storage/projectRepo.js';
 import { ProjectCard } from './ProjectCard.js';
 import { EmptyState } from '../common/EmptyState.js';
+import { Icon } from '../common/Icon.js';
 import { Button } from '../common/Button.js';
 import { ConfirmDialog } from '../common/ConfirmDialog.js';
 import { toast } from '../common/Toast.js';
@@ -71,7 +72,7 @@ export function ProjectList({ onOpen, onCreate, onImport }: ProjectListProps): J
         </div>
 
         {filtered.length === 0 ? (
-          <EmptyState title={t('project.list.empty')} icon="🎬" />
+          <EmptyState title={t('project.list.empty')} icon={<Icon name="film" size={30} />} />
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
             {filtered.map((project) => (

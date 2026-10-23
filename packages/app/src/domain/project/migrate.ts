@@ -30,7 +30,7 @@ export class UnsupportedSchemaVersionError extends Error {
   constructor(fileVersion: string, supportedVersion = CURRENT_SCHEMA_VERSION) {
     super(
       `工程文件版本过高：${fileVersion}，当前应用仅支持 ${supportedVersion}。` +
-        `请升级 ClipCut Web 后再打开该文件。`,
+        `请升级 QD视界 后再打开该文件。`,
     );
     this.name = 'UnsupportedSchemaVersionError';
     this.fileVersion = fileVersion;
