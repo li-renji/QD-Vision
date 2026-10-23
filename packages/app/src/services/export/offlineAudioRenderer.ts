@@ -54,16 +54,43 @@
  *
  * 详见 {@link resolveClipScheduling}。
  *
- * ## 已知限制：变速会变调
+ * ## 已知限制：变速会变调（**已实测，不是拍脑袋**）
  *
  * 本模块的变速走**纯 `playbackRate`**（`audioGraph.applySpeed` 在
  * `preservePitch: false` 时就是这个行为），因此导出的变速音频**无法保音高**。
  *
- * ⚠️ **实测结论（Chromium 131 / Playwright）**：`OfflineAudioContext` **其实支持**
- * `audioWorklet` —— `addModule()` 成功、`AudioWorkletNode` 能建、直通 worklet 在离线
- * 渲染里**确实出数**（峰值与直连路径一致）。所以「离线不能保音高」**不是平台限制**，
- * 而是本模块**主动不启用**它：保音高 worklet 属于预览侧的实现，导出路径不依赖它，
- * 以免两侧的语义耦合在一起。
+ * ### 为什么不用保音高 worklet（Chromium 131 实测结论）
+ *
+ * 曾评估过把 `public/worklets/pitchPreserveStretchProcessor.js` 接进导出路径，
+ * 实测**否掉了**（探针：源为「每秒幅度 0.1/0.2/0.3 的阶梯」与「440Hz 正弦」，
+ * 在 `OfflineAudioContext` 里渲染后测输出的幅度画像与过零频率）：
+ *
+ * | rate | 输出有声时长 | 幅度阶梯落点 | 440Hz 正弦的输出频率 |
+ * |---|---|---|---|
+ * | 1 | 3.000s（= 源长） | 1s / 2s（**1×**） | 440 Hz（逐样本透明，误差 7.45e-9） |
+ * | 0.5 | 3.008s（= 源长） | 1s / 2s（**1×**） | **592.35 Hz** |
+ * | 2 | 2.997s（= 源长） | 1s / 2s（**1×**） | **312.55 Hz**（= 0.71×） |
+ *
+ * 也就是说：**`rate` 对输出没有任何影响**（连源循环播放也一样），
+ * 音高反而被搅乱（440 → 592 / 312 Hz）。
+ *
+ * 根因（读 `pitchPreserveStretchProcessor.js` 可复核）：
+ * `process()` 里的合成循环是「**贪心填满输出 FIFO**」
+ * （`while (canSynthesize() && pending + S + quantum <= OUT_FIFO) synthesize()`），
+ * 于是每个输出 quantum 总是产出**整数倍**的帧，
+ * 素材消耗速率恒等于输入到达速率（1×）—— `hop` 只影响「每帧吃多少素材」，
+ * 不影响「素材多久被读完」⇒ **内容推进速率恒为 1×**。
+ * WSOLA 要真正变速，合成必须**按输出速率配速**（每 quantum 合成固定帧数）。
+ *
+ * 另有一条**架构性**限制（与配速无关）：WSOLA 作为**流式**处理器，
+ * 「加速」需要尚未到达的素材（「数据此刻还不存在」），
+ * 「减速」则要求素材在输出窗口内持续供应 ——
+ * 而离线渲染里素材是**有限 AudioBuffer**，`AudioBufferSourceNode` 播完就没了，
+ * 减速时素材的尾巴会丢。
+ *
+ * ⇒ 结论：**导出路径不挂 worklet**，用纯 `playbackRate`。
+ * 时长是对的（音画同步），代价只是音高随变速变化 ——
+ * 这与预览侧「加速交给元素 `playbackRate`」的行为一致。
  *
  * 无论原因如何，**都必须告知用户**（PRD §9.0.1 准则四「静默即等于关闭警报」）——
  * 因此本模块会在 {@link OfflineMixResult.warnings} 里给出显式提示。
@@ -410,9 +437,9 @@ export async function renderOfflineMix(
   try {
     graph = buildAudioGraph(context, doc, {
       // ⚠️ 显式关闭保音高变速。
-      // 实测：`OfflineAudioContext` 其实**可以**跑 AudioWorklet，但保音高 worklet
-      // 属于预览侧的实现（`services/media/previewAudio.ts` + `public/worklets/`），
-      // 导出路径不依赖它，以免两侧语义耦合。代价是变速片段会变调 → 由 warnings 告知。
+      // 实测（见文件头「已知限制」）：WSOLA worklet 在离线渲染里 `rate` 对输出
+      // **没有任何影响**（内容推进速率恒为 1×，音高反而被搅乱），
+      // 因此导出路径不挂它 —— 时长正确、音高随变速变化，与预览侧加速行为一致。
       preservePitch: false,
       resolveSource: (clip) => {
         const assetId = clip.assetId;
