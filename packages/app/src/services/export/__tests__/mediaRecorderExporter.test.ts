@@ -267,6 +267,39 @@ function makeAudioStream(): MediaStream {
   return new MockMediaStream([makeTrack('audio')]) as unknown as MediaStream;
 }
 
+/**
+ * 在**假时钟**下跑一次导出。
+ *
+ * ## 为什么必须用假时钟
+ *
+ * 生产代码的逐帧循环里有真实等待（`mediaRecorderExporter.ts:119`）：
+ * ```ts
+ * await new Promise<void>((resolve) => { setTimeout(resolve, frameDurationMs); });
+ * ```
+ * 12 帧 × 1000/30fps ≈ **400ms 真实挂钟**。CI 上多 worker 并行 + 机器负载高时，
+ * 事件循环被饿死 → 这段真实等待被拉长 → 单个用例超过 Vitest 默认
+ * `testTimeout`（5000ms）→ **整文件的用例集体超时失败**（典型的「本地绿、CI 挂」）。
+ *
+ * 改用假时钟后，本文件的用例**零真实等待**，无论机器多慢都在毫秒级完成。
+ */
+async function runExport(
+  options: MediaRecorderExportOptions,
+): Promise<{ blob: Blob; mimeType: string }> {
+  const pending = exportWithMediaRecorder(options);
+  // 立刻挂上 settle 处理器，避免推进时钟期间出现「未处理的拒绝」告警
+  const settled = pending.then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+  // 推进假时钟：每帧等待 1000/fps ms，留足余量覆盖所有帧
+  await vi.advanceTimersByTimeAsync(
+    options.plan.totalFrames * (1000 / options.plan.video.fps) + 100,
+  );
+  const outcome = await settled;
+  if (!outcome.ok) throw outcome.error;
+  return outcome.value;
+}
+
 describe('services/export/mediaRecorderExporter', () => {
   beforeEach(() => {
     recorderRecords.length = 0;
@@ -275,6 +308,9 @@ describe('services/export/mediaRecorderExporter', () => {
     recorderShouldFail = false;
     isTypeSupportedShouldThrow = false;
     canvasCreated = 0;
+
+    // 假时钟：消除生产代码逐帧循环里的真实等待（详见 runExport 的注释）
+    vi.useFakeTimers();
 
     vi.stubGlobal('MediaRecorder', MockMediaRecorder);
     vi.stubGlobal('MediaStream', MockMediaStream);
@@ -289,6 +325,7 @@ describe('services/export/mediaRecorderExporter', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -297,13 +334,13 @@ describe('services/export/mediaRecorderExporter', () => {
     it('没有 MediaRecorder 时明确报错', async () => {
       vi.stubGlobal('MediaRecorder', undefined);
 
-      await expect(exportWithMediaRecorder(makeOptions())).rejects.toThrowError(
+      await expect(runExport(makeOptions())).rejects.toThrowError(
         '当前浏览器不支持 MediaRecorder，无法使用兜底导出模式。',
       );
     });
 
     it('优先使用 vp9 + opus', async () => {
-      const result = await exportWithMediaRecorder(makeOptions());
+      const result = await runExport(makeOptions());
 
       expect(result.mimeType).toBe('video/webm;codecs=vp9,opus');
     });
@@ -311,7 +348,7 @@ describe('services/export/mediaRecorderExporter', () => {
     it('vp9 与 vp8 同时可用时优先选 vp9（候选顺序即优先级）', async () => {
       supportedMimeTypes = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus'];
 
-      const result = await exportWithMediaRecorder(makeOptions());
+      const result = await runExport(makeOptions());
 
       expect(result.mimeType).toBe('video/webm;codecs=vp9,opus');
     });
@@ -319,7 +356,7 @@ describe('services/export/mediaRecorderExporter', () => {
     it('vp9 不支持时降级到 vp8 + opus', async () => {
       supportedMimeTypes = ['video/webm;codecs=vp8,opus'];
 
-      const result = await exportWithMediaRecorder(makeOptions());
+      const result = await runExport(makeOptions());
 
       expect(result.mimeType).toBe('video/webm;codecs=vp8,opus');
     });
@@ -327,7 +364,7 @@ describe('services/export/mediaRecorderExporter', () => {
     it('都不支持时降级到通用 video/webm', async () => {
       supportedMimeTypes = ['video/webm'];
 
-      const result = await exportWithMediaRecorder(makeOptions());
+      const result = await runExport(makeOptions());
 
       expect(result.mimeType).toBe('video/webm');
     });
@@ -335,7 +372,7 @@ describe('services/export/mediaRecorderExporter', () => {
     it('一个都不支持时兜底为 video/webm（不报错）', async () => {
       supportedMimeTypes = [];
 
-      const result = await exportWithMediaRecorder(makeOptions());
+      const result = await runExport(makeOptions());
 
       expect(result.mimeType).toBe('video/webm');
       expect(result.blob.type).toBe('video/webm');
@@ -344,7 +381,7 @@ describe('services/export/mediaRecorderExporter', () => {
     it('isTypeSupported 抛异常时按「不支持」处理，继续往下找', async () => {
       isTypeSupportedShouldThrow = true;
 
-      const result = await exportWithMediaRecorder(makeOptions());
+      const result = await runExport(makeOptions());
 
       expect(result.mimeType).toBe('video/webm');
     });
@@ -352,7 +389,7 @@ describe('services/export/mediaRecorderExporter', () => {
 
   describe('录制参数与轨道合成', () => {
     it('录制器拿到 mimeType 与视频 / 音频码率', async () => {
-      await exportWithMediaRecorder(makeOptions());
+      await runExport(makeOptions());
 
       const record = recorderRecords[0];
       expect(record?.mimeType).toBe('video/webm;codecs=vp9,opus');
@@ -361,7 +398,7 @@ describe('services/export/mediaRecorderExporter', () => {
     });
 
     it('以 1000ms 为时间片启动录制', async () => {
-      await exportWithMediaRecorder(makeOptions());
+      await runExport(makeOptions());
 
       expect(recorderRecords[0]?.startTimeslice).toBe(1000);
     });
@@ -369,7 +406,7 @@ describe('services/export/mediaRecorderExporter', () => {
     it('合流包含画布视频轨与混音音频轨', async () => {
       const audioStream = makeAudioStream();
 
-      await exportWithMediaRecorder(makeOptions({ audioStream }));
+      await runExport(makeOptions({ audioStream }));
 
       const tracks = [...createdTracks.keys()];
       expect(tracks.filter((track) => track.kind === 'video').length).toBe(1);
@@ -377,7 +414,7 @@ describe('services/export/mediaRecorderExporter', () => {
     });
 
     it('没有音频流时只含视频轨', async () => {
-      await exportWithMediaRecorder(makeOptions({ audioStream: null }));
+      await runExport(makeOptions({ audioStream: null }));
 
       const tracks = [...createdTracks.keys()];
       expect(tracks.filter((track) => track.kind === 'audio').length).toBe(0);
@@ -385,7 +422,7 @@ describe('services/export/mediaRecorderExporter', () => {
     });
 
     it('画布按计划的分辨率与帧率创建', async () => {
-      await exportWithMediaRecorder(
+      await runExport(
         makeOptions({ plan: makePlan({ video: { width: 1280, height: 720, fps: 25, bitrate: 1 } }) }),
       );
 
@@ -395,7 +432,7 @@ describe('services/export/mediaRecorderExporter', () => {
 
   describe('产物', () => {
     it('返回 mimeType 与 WebM Blob', async () => {
-      const result = await exportWithMediaRecorder(makeOptions());
+      const result = await runExport(makeOptions());
 
       expect(result.blob).toBeInstanceOf(Blob);
       expect(result.blob.type).toBe('video/webm;codecs=vp9,opus');
@@ -407,7 +444,7 @@ describe('services/export/mediaRecorderExporter', () => {
     it('每 5 帧与最后一帧上报进度', async () => {
       const ratios: number[] = [];
 
-      await exportWithMediaRecorder(
+      await runExport(
         makeOptions({
           plan: makePlan({ totalFrames: 12 }),
           onProgress: (progress) => ratios.push(progress.ratio),
@@ -420,7 +457,7 @@ describe('services/export/mediaRecorderExporter', () => {
     it('进度携带当前时间与总时长', async () => {
       const seen: Array<{ currentTimeMs: number; totalTimeMs: number }> = [];
 
-      await exportWithMediaRecorder(
+      await runExport(
         makeOptions({
           plan: makePlan({ totalFrames: 6 }),
           onProgress: (progress) =>
@@ -440,7 +477,7 @@ describe('services/export/mediaRecorderExporter', () => {
 
       let caught: unknown = null;
       try {
-        await exportWithMediaRecorder(makeOptions({ signal: controller.signal }));
+        await runExport(makeOptions({ signal: controller.signal }));
       } catch (error) {
         caught = error;
       }
@@ -454,7 +491,7 @@ describe('services/export/mediaRecorderExporter', () => {
       controller.abort();
 
       await expect(
-        exportWithMediaRecorder(makeOptions({ signal: controller.signal })),
+        runExport(makeOptions({ signal: controller.signal })),
       ).rejects.toThrow();
 
       expect(recorderRecords[0]?.stopped).toBe(1);
@@ -462,7 +499,7 @@ describe('services/export/mediaRecorderExporter', () => {
     });
 
     it('正常结束时停止录制器并释放所有轨道', async () => {
-      await exportWithMediaRecorder(makeOptions());
+      await runExport(makeOptions());
 
       expect(recorderRecords[0]?.stopped).toBe(1);
       expect(createdTracks.size).toBeGreaterThan(0);
@@ -474,7 +511,7 @@ describe('services/export/mediaRecorderExporter', () => {
     it('MediaRecorder 报错时向上抛出', async () => {
       recorderShouldFail = true;
 
-      await expect(exportWithMediaRecorder(makeOptions())).rejects.toThrowError(/MediaRecorder 错误/);
+      await expect(runExport(makeOptions())).rejects.toThrowError(/MediaRecorder 错误/);
     });
   });
 });

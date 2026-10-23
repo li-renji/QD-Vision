@@ -362,6 +362,29 @@ function makeBitmap(): ImageBitmap {
   return { width: 1920, height: 1080, close: () => undefined } as unknown as ImageBitmap;
 }
 
+/**
+ * 在**假时钟**下跑一次导出。
+ *
+ * 生产代码每 5 帧会让出一次主线程（`webCodecsExporter.ts:224` 的 `setTimeout(resolve, 0)`）。
+ * 真实计时器下这依赖事件循环调度，CI 高负载时可能拖慢甚至超时；
+ * 假时钟把「让出」变成确定性的时钟推进，用例耗时与机器负载**完全无关**。
+ */
+async function runExport(
+  options: WebCodecsExportOptions,
+): Promise<Blob> {
+  const pending = exportWithWebCodecs(options);
+  // 立刻挂上 settle 处理器，避免推进时钟期间出现「未处理的拒绝」告警
+  const settled = pending.then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+  // 每 5 帧一次让出 → 预留 totalFrames 级别的毫秒数足够覆盖
+  await vi.advanceTimersByTimeAsync(options.plan.totalFrames * 10 + 100);
+  const outcome = await settled;
+  if (!outcome.ok) throw outcome.error;
+  return outcome.value;
+}
+
 /** 默认导出参数。 */
 function makeOptions(overrides: Partial<WebCodecsExportOptions> = {}): WebCodecsExportOptions {
   return {
@@ -383,6 +406,9 @@ describe('services/export/webCodecsExporter', () => {
     muxerRecords.length = 0;
     muxerCtorCount.value = 0;
 
+    // 假时钟：消除生产代码「让出主线程」对事件循环的依赖
+    vi.useFakeTimers();
+
     vi.stubGlobal('VideoEncoder', MockVideoEncoder);
     vi.stubGlobal('VideoFrame', MockVideoFrame);
     vi.stubGlobal('AudioEncoder', MockAudioEncoder);
@@ -391,6 +417,7 @@ describe('services/export/webCodecsExporter', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -399,7 +426,7 @@ describe('services/export/webCodecsExporter', () => {
     it('没有 VideoEncoder 时明确报错（不产出坏文件）', async () => {
       vi.stubGlobal('VideoEncoder', undefined);
 
-      await expect(exportWithWebCodecs(makeOptions())).rejects.toThrowError(
+      await expect(runExport(makeOptions())).rejects.toThrowError(
         '当前浏览器不支持 WebCodecs VideoEncoder',
       );
       expect(muxerCtorCount.value).toBe(0);
@@ -408,7 +435,7 @@ describe('services/export/webCodecsExporter', () => {
     it('画布拿不到 2D 上下文时明确报错', async () => {
       vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
 
-      await expect(exportWithWebCodecs(makeOptions())).rejects.toThrowError(
+      await expect(runExport(makeOptions())).rejects.toThrowError(
         '无法创建 2D 画布上下文',
       );
       expect(muxerCtorCount.value).toBe(1);
@@ -417,35 +444,35 @@ describe('services/export/webCodecsExporter', () => {
 
   describe('容器 codec 映射', () => {
     it('avc 开头 → avc', async () => {
-      await exportWithWebCodecs(makeOptions({ videoCodec: 'avc1.640028' }));
+      await runExport(makeOptions({ videoCodec: 'avc1.640028' }));
 
       const record = muxerRecords[0] as MuxerRecord;
       expect((record.options['video'] as Record<string, unknown>)['codec']).toBe('avc');
     });
 
     it('hvc 开头 → hevc', async () => {
-      await exportWithWebCodecs(makeOptions({ videoCodec: 'hvc1.1.6.L93.B0' }));
+      await runExport(makeOptions({ videoCodec: 'hvc1.1.6.L93.B0' }));
 
       const record = muxerRecords[0] as MuxerRecord;
       expect((record.options['video'] as Record<string, unknown>)['codec']).toBe('hevc');
     });
 
     it('av01 开头 → av1', async () => {
-      await exportWithWebCodecs(makeOptions({ videoCodec: 'av01.0.04M.08' }));
+      await runExport(makeOptions({ videoCodec: 'av01.0.04M.08' }));
 
       const record = muxerRecords[0] as MuxerRecord;
       expect((record.options['video'] as Record<string, unknown>)['codec']).toBe('av1');
     });
 
     it('其它（vp09 等）→ vp9 兜底', async () => {
-      await exportWithWebCodecs(makeOptions({ videoCodec: 'vp09.00.10.08' }));
+      await runExport(makeOptions({ videoCodec: 'vp09.00.10.08' }));
 
       const record = muxerRecords[0] as MuxerRecord;
       expect((record.options['video'] as Record<string, unknown>)['codec']).toBe('vp9');
     });
 
     it('视频轨参数透传给 muxer（分辨率 / 帧率 / fastStart）', async () => {
-      await exportWithWebCodecs(makeOptions({ plan: makePlan() }));
+      await runExport(makeOptions({ plan: makePlan() }));
 
       const record = muxerRecords[0] as MuxerRecord;
       expect(record.options['video']).toEqual({
@@ -461,14 +488,14 @@ describe('services/export/webCodecsExporter', () => {
 
   describe('音频轨配置', () => {
     it('audioCodec 为 null 时不配置音频轨', async () => {
-      await exportWithWebCodecs(makeOptions({ audioCodec: null, audioBuffer: makeAudioBuffer(100) }));
+      await runExport(makeOptions({ audioCodec: null, audioBuffer: makeAudioBuffer(100) }));
 
       const record = muxerRecords[0] as MuxerRecord;
       expect(record.options['audio']).toBeUndefined();
     });
 
     it('mp4a 开头 → aac，并带采样率与声道数', async () => {
-      await exportWithWebCodecs(
+      await runExport(
         makeOptions({ audioCodec: 'mp4a.40.2', audioBuffer: makeAudioBuffer(100, 2, 44_100) }),
       );
 
@@ -481,7 +508,7 @@ describe('services/export/webCodecsExporter', () => {
     });
 
     it('非 mp4a → opus', async () => {
-      await exportWithWebCodecs(
+      await runExport(
         makeOptions({ audioCodec: 'opus', audioBuffer: makeAudioBuffer(100, 1, 48_000) }),
       );
 
@@ -490,7 +517,7 @@ describe('services/export/webCodecsExporter', () => {
     });
 
     it('没有 AudioBuffer 时用默认采样率 48k / 立体声', async () => {
-      await exportWithWebCodecs(makeOptions({ audioCodec: 'mp4a.40.2', audioBuffer: null }));
+      await runExport(makeOptions({ audioCodec: 'mp4a.40.2', audioBuffer: null }));
 
       const record = muxerRecords[0] as MuxerRecord;
       expect(record.options['audio']).toEqual({
@@ -503,7 +530,7 @@ describe('services/export/webCodecsExporter', () => {
     it('没有 AudioEncoder 时跳过音频编码（视频仍正常导出）', async () => {
       vi.stubGlobal('AudioEncoder', undefined);
 
-      const blob = await exportWithWebCodecs(
+      const blob = await runExport(
         makeOptions({ audioCodec: 'mp4a.40.2', audioBuffer: makeAudioBuffer(100) }),
       );
 
@@ -514,7 +541,7 @@ describe('services/export/webCodecsExporter', () => {
 
   describe('视频轨编码', () => {
     it('编码器配置带上分辨率 / 码率 / 帧率 / latencyMode', async () => {
-      await exportWithWebCodecs(makeOptions({ videoCodec: 'avc1.640028' }));
+      await runExport(makeOptions({ videoCodec: 'avc1.640028' }));
 
       const record = encoderRecords[0];
       expect(record?.config).toEqual({
@@ -528,45 +555,57 @@ describe('services/export/webCodecsExporter', () => {
     });
 
     it('逐帧编码，帧数等于 totalFrames', async () => {
-      await exportWithWebCodecs(makeOptions({ plan: makePlan({ totalFrames: 7 }) }));
+      await runExport(makeOptions({ plan: makePlan({ totalFrames: 7 }) }));
 
       expect(encoderRecords[0]?.encodes.length).toBe(7);
     });
 
-    it('关键帧间隔 = KEYFRAME_INTERVAL_MS / fps', async () => {
-      await exportWithWebCodecs(makeOptions({ plan: makePlan({ totalFrames: 10 }) }));
-
-      const encodes = encoderRecords[0]?.encodes ?? [];
+    it('关键帧间隔 = KEYFRAME_INTERVAL_MS / fps（跨过真实关键帧边界验证）', async () => {
+      // 30fps → 关键帧间隔 2000ms/1000 × 30 = 60 帧。
+      // 必须**跨过第 60 帧**这个边界，否则「间隔被改成 120」这类变异无法被发现
+      // （前 60 帧内只有第 0 帧是关键帧，间隔翻倍后看起来一模一样）。
       const expectedInterval = Math.round((KEYFRAME_INTERVAL_MS / 1000) * 30);
       expect(expectedInterval).toBe(60);
-      // 前 10 帧里只有第 0 帧是关键帧
+
+      const totalFrames = expectedInterval + 2; // 覆盖到第 61 帧
+      await runExport(makeOptions({ plan: makePlan({ totalFrames }) }));
+
+      const encodes = encoderRecords[0]?.encodes ?? [];
+      expect(encodes.length).toBe(totalFrames);
+
+      // 边界之前：只有第 0 帧是关键帧
       expect((encodes[0]?.options as { keyFrame: boolean }).keyFrame).toBe(true);
       expect((encodes[1]?.options as { keyFrame: boolean }).keyFrame).toBe(false);
+      expect((encodes[expectedInterval - 1]?.options as { keyFrame: boolean }).keyFrame).toBe(false);
+      // 边界当帧：第 60 帧是关键帧
+      expect((encodes[expectedInterval]?.options as { keyFrame: boolean }).keyFrame).toBe(true);
+      // 边界之后：第 61 帧不是关键帧
+      expect((encodes[expectedInterval + 1]?.options as { keyFrame: boolean }).keyFrame).toBe(false);
     });
 
     it('VideoFrame 的时间戳按帧序号递增', async () => {
-      await exportWithWebCodecs(makeOptions({ plan: makePlan({ totalFrames: 3 }) }));
+      await runExport(makeOptions({ plan: makePlan({ totalFrames: 3 }) }));
 
       expect(frameRecords.map((frame) => frame.timestamp)).toEqual([0, 33333, 66667]);
       expect(frameRecords[0]?.duration).toBe(33333);
     });
 
     it('每个 VideoFrame 编码后立即 close（无泄漏）', async () => {
-      await exportWithWebCodecs(makeOptions({ plan: makePlan({ totalFrames: 5 }) }));
+      await runExport(makeOptions({ plan: makePlan({ totalFrames: 5 }) }));
 
       expect(frameRecords.length).toBe(5);
       expect(frameRecords.every((frame) => frame.closed === 1)).toBe(true);
     });
 
     it('编码结束后 flush 并 close 编码器', async () => {
-      await exportWithWebCodecs(makeOptions());
+      await runExport(makeOptions());
 
       expect(encoderRecords[0]?.flushed).toBe(1);
       expect(encoderRecords[0]?.closed).toBe(1);
     });
 
     it('muxer 收到所有视频分片并 finalize', async () => {
-      await exportWithWebCodecs(makeOptions({ plan: makePlan({ totalFrames: 4 }) }));
+      await runExport(makeOptions({ plan: makePlan({ totalFrames: 4 }) }));
 
       const record = muxerRecords[0] as MuxerRecord;
       expect(record.videoChunks.length).toBe(4);
@@ -574,7 +613,7 @@ describe('services/export/webCodecsExporter', () => {
     });
 
     it('产物是 video/mp4 的 Blob', async () => {
-      const blob = await exportWithWebCodecs(makeOptions());
+      const blob = await runExport(makeOptions());
 
       expect(blob).toBeInstanceOf(Blob);
       expect(blob.type).toBe('video/mp4');
@@ -591,7 +630,7 @@ describe('services/export/webCodecsExporter', () => {
         makeClip({ id: 'clip_c', assetId: null, startMs: 0, durationMs: 1000, inMs: 0, speed: 1 }),
       ]);
 
-      await exportWithWebCodecs(
+      await runExport(
         makeOptions({
           doc,
           plan: makePlan({ totalFrames: 1 }),
@@ -614,7 +653,7 @@ describe('services/export/webCodecsExporter', () => {
     it('按 AUDIO_CHUNK_SAMPLES 分块交错编码', async () => {
       const length = AUDIO_CHUNK_SAMPLES + 476;
 
-      await exportWithWebCodecs(
+      await runExport(
         makeOptions({ audioCodec: 'mp4a.40.2', audioBuffer: makeAudioBuffer(length, 2) }),
       );
 
@@ -626,7 +665,7 @@ describe('services/export/webCodecsExporter', () => {
     });
 
     it('交错顺序为「逐帧 L R」', async () => {
-      await exportWithWebCodecs(
+      await runExport(
         makeOptions({ audioCodec: 'mp4a.40.2', audioBuffer: makeAudioBuffer(4, 2) }),
       );
 
@@ -639,7 +678,7 @@ describe('services/export/webCodecsExporter', () => {
     });
 
     it('音频分片时间戳按采样率换算', async () => {
-      await exportWithWebCodecs(
+      await runExport(
         makeOptions({ audioCodec: 'mp4a.40.2', audioBuffer: makeAudioBuffer(2048, 1, 48_000) }),
       );
 
@@ -648,7 +687,7 @@ describe('services/export/webCodecsExporter', () => {
     });
 
     it('音频编码器配置带上采样率 / 声道 / 码率', async () => {
-      await exportWithWebCodecs(
+      await runExport(
         makeOptions({ audioCodec: 'mp4a.40.2', audioBuffer: makeAudioBuffer(100, 2, 44_100) }),
       );
 
@@ -662,7 +701,7 @@ describe('services/export/webCodecsExporter', () => {
     });
 
     it('每个 AudioData 编码后立即 close', async () => {
-      await exportWithWebCodecs(
+      await runExport(
         makeOptions({ audioCodec: 'mp4a.40.2', audioBuffer: makeAudioBuffer(1500, 1) }),
       );
 
@@ -671,7 +710,7 @@ describe('services/export/webCodecsExporter', () => {
     });
 
     it('muxer 收到音频分片', async () => {
-      await exportWithWebCodecs(
+      await runExport(
         makeOptions({ audioCodec: 'mp4a.40.2', audioBuffer: makeAudioBuffer(100, 1) }),
       );
 
@@ -684,7 +723,7 @@ describe('services/export/webCodecsExporter', () => {
     it('每 5 帧与最后一帧上报进度', async () => {
       const ratios: number[] = [];
 
-      await exportWithWebCodecs(
+      await runExport(
         makeOptions({
           plan: makePlan({ totalFrames: 12 }),
           onProgress: (progress) => ratios.push(progress.ratio),
@@ -697,7 +736,7 @@ describe('services/export/webCodecsExporter', () => {
     it('进度携带当前时间与总时长', async () => {
       const seen: Array<{ currentTimeMs: number; totalTimeMs: number }> = [];
 
-      await exportWithWebCodecs(
+      await runExport(
         makeOptions({
           plan: makePlan({ totalFrames: 6 }),
           onProgress: (progress) =>
@@ -718,7 +757,7 @@ describe('services/export/webCodecsExporter', () => {
 
       let caught: unknown = null;
       try {
-        await exportWithWebCodecs(makeOptions({ signal: controller.signal }));
+        await runExport(makeOptions({ signal: controller.signal }));
       } catch (error) {
         caught = error;
       }
@@ -732,7 +771,7 @@ describe('services/export/webCodecsExporter', () => {
       const controller = new AbortController();
       controller.abort();
 
-      await expect(exportWithWebCodecs(makeOptions({ signal: controller.signal }))).rejects.toThrow();
+      await expect(runExport(makeOptions({ signal: controller.signal }))).rejects.toThrow();
 
       expect(encoderRecords[0]?.closed).toBe(1);
     });
@@ -741,7 +780,7 @@ describe('services/export/webCodecsExporter', () => {
       const controller = new AbortController();
       controller.abort();
 
-      await expect(exportWithWebCodecs(makeOptions({ signal: controller.signal }))).rejects.toThrow();
+      await expect(runExport(makeOptions({ signal: controller.signal }))).rejects.toThrow();
 
       const record = muxerRecords[0] as MuxerRecord;
       expect(record.finalized).toBe(false);
