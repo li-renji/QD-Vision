@@ -6,6 +6,22 @@ import react from '@vitejs/plugin-react';
 const resolvePath = (relative: string): string =>
   fileURLToPath(new URL(relative, import.meta.url)).replace(/\\/g, '/');
 
+/**
+ * e2e 专用构建输出目录。
+ *
+ * ## 为什么需要独立目录
+ *
+ * `vite build` 会**先清空 `outDir` 再重写**。若 e2e 的 `vite preview` 与开发时的
+ * `pnpm build` 共用同一个 `dist/`，那么只要有人（人或并行 CI 任务）在另一处重建，
+ * 正在跑的 e2e 就会读到**半截**的 `index.html`（标题变空字符串）或资源 404，
+ * 表现为**随机失败、且每次失败的用例都不同**。
+ *
+ * 因此 e2e 走`E2E=1 vite build --outDir dist-e2e` 产出的独立目录，
+ * 与开发用的 `dist/` 彻底隔离，互不干扰。
+ */
+const E2E_OUT_DIR = 'dist-e2e';
+const isE2EBuild = process.env['E2E'] === '1';
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -16,7 +32,8 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist',
+    outDir: isE2EBuild ? E2E_OUT_DIR : 'dist',
+    emptyOutDir: true,
     sourcemap: true,
     target: 'es2022',
     rollupOptions: {

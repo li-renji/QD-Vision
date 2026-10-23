@@ -6,6 +6,9 @@ coverage/
 .turbo/
 *.tsbuildinfo
 
+# e2e 专用构建输出（与开发用的 dist/ 隔离，见 packages/app/playwright.config.ts）
+dist-e2e/
+
 # Playwright
 test-results/
 playwright-report/

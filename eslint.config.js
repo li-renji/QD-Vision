@@ -78,6 +78,8 @@ export default tseslint.config(
   {
     ignores: [
       '**/dist/**',
+      // e2e 专用构建输出（见 packages/app/playwright.config.ts），与 dist/ 同理忽略
+      '**/dist-e2e/**',
       '**/node_modules/**',
       '**/coverage/**',
       '**/build/**',

@@ -26,10 +26,18 @@ export {
 } from './uiStore.js';
 export {
   getCurrentTimeMs,
+  getPlaybackClock,
   isPlaying,
+  resolveTimelineDuration,
   usePlaybackStore,
   type PlaybackState,
 } from './playbackStore.js';
+export {
+  MAX_CLOCK_DELTA_MS,
+  createPlaybackClock,
+  type PlaybackClock,
+  type PlaybackClockOptions,
+} from './playbackClock.js';
 export {
   getStoreMiddleware,
   installStoreMiddleware,

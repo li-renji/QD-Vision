@@ -43,3 +43,8 @@ export {
 } from './audioGraph.js';
 export { AudioEngine, audioEngine } from './audioEngine.js';
 export { createVideoPool, type VideoPool, type VideoPoolElement } from './videoPool.js';
+export {
+  createPreviewFrameSource,
+  type PreviewFrameSource,
+  type PreviewFrameSourceOptions,
+} from './previewFrameSource.js';

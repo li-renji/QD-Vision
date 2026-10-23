@@ -5,9 +5,29 @@
  * 组件树重渲染的路径上。因此本 store 提供 `subscribeFrame()` 命令式通道：
  * 渲染循环与播放头直接读 ref，不触发 React 重渲染。
  * 需要显示时间码的地方以 10Hz 节流订阅。
+ *
+ * ## 播放时钟（播放头不动 / 预览全黑的根因修复）
+ *
+ * `play()` / `setIsPlaying(true)` 会启动 {@link PlaybackClock} —— 一个基于
+ * `requestAnimationFrame` 的时钟，用**真实经过时间**（`performance.now()` 差值）
+ * 乘以 `playbackRate` 推进 `currentTimeMs`，并通过 `setCurrentTime` 走既有
+ * `frameListeners` 通道通知渲染层。
+ *
+ * 时钟采用**锚点式推进**：任何一次 `setCurrentTime`（含时钟自己的写入）都会
+ * `rebase()`，因此：
+ * - 拖动播放头 / 点击刻度 → 锚点立刻重置到新位置，**不会被时钟拽回旧位置**；
+ * - 切换 `playbackRate` → 锚点重置，**时间连续不跳变**。
+ *
+ * 播放到工程总时长（或倒放到头）时**自动停止并钳位到边界**，不循环。
  */
 
 import { create } from 'zustand';
+import type { ProjectDoc } from '@clipcut/shared-types';
+import { computeProjectDuration } from '../domain/project/duration.js';
+import { useProjectStore } from './projectStore.js';
+import { createPlaybackClock, type PlaybackClock } from './playbackClock.js';
+
+export { MAX_CLOCK_DELTA_MS } from './playbackClock.js';
 
 /** 播放状态。 */
 export interface PlaybackState {
@@ -38,6 +58,25 @@ export interface PlaybackState {
 /** 命令式回调集合（不参与 React 渲染）。 */
 const frameListeners = new Set<(timeMs: number) => void>();
 
+/**
+ * 解析时间线总时长（毫秒）。
+ *
+ * **刻意不读 `doc.meta.durationMs`** —— 它是序列化/反序列化时写下的**缓存派生量**
+ * （ARCHITECTURE §5.1），编辑过程中实时增删 clip 不会刷新它。若拿它当播放边界，
+ * 「删掉最后一个 clip」后时钟仍会以为工程有 999 秒长，永远等不到自动停止。
+ *
+ * 因此这里只用 {@link computeProjectDuration}（§5.1 唯一实现处）实时计算。
+ * 结果为 0 表示时间线为空，此时时钟按「长度未知」处理，不做自动停止。
+ */
+export function resolveTimelineDuration(doc: ProjectDoc): number {
+  return computeProjectDuration(doc);
+}
+
+/** 读取当前工程总时长（毫秒）；命令式，供时钟每次推进时查询。 */
+function currentDurationMs(): number {
+  return resolveTimelineDuration(useProjectStore.getState().doc);
+}
+
 export const usePlaybackStore = create<PlaybackState>()((set, get) => ({
   currentTimeMs: 0,
   isPlaying: false,
@@ -45,16 +84,24 @@ export const usePlaybackStore = create<PlaybackState>()((set, get) => ({
   frameDurationMs: 1000 / 30,
 
   setCurrentTime: (ms) => {
-    set({ currentTimeMs: Math.max(0, ms) });
-    for (const listener of frameListeners) listener(Math.max(0, ms));
+    const clamped = Math.max(0, ms);
+    set({ currentTimeMs: clamped });
+    // 任何一次外部写入（seek / 逐帧 / 时钟自身）都要重置时钟基准，
+    // 否则时钟会用旧锚点把用户刚拖到的位置覆盖掉。
+    clock.rebase();
+    for (const listener of frameListeners) listener(clamped);
   },
 
   setIsPlaying: (playing) => {
     set({ isPlaying: playing });
+    if (playing) clock.start();
+    else clock.stop();
   },
 
   setPlaybackRate: (rate) => {
     set({ playbackRate: rate });
+    // 重置基准：变速前 accrued 的那一点点 delta 不应被新倍速二次放大
+    clock.rebase();
   },
 
   setFrameDuration: (ms) => {
@@ -62,15 +109,24 @@ export const usePlaybackStore = create<PlaybackState>()((set, get) => ({
   },
 
   play: () => {
+    const { currentTimeMs } = get();
+    // 已在片尾时按播放 = 从头重放（否则「播放」看起来毫无反应）
+    const durationMs = currentDurationMs();
+    if (durationMs > 0 && currentTimeMs >= durationMs) {
+      get().setCurrentTime(0);
+    }
     set({ isPlaying: true });
+    clock.start();
   },
 
   pause: () => {
+    clock.stop();
     set({ isPlaying: false });
   },
 
   togglePlay: () => {
-    set({ isPlaying: !get().isPlaying });
+    if (get().isPlaying) get().pause();
+    else get().play();
   },
 
   stepFrame: (direction) => {
@@ -93,6 +149,29 @@ export const usePlaybackStore = create<PlaybackState>()((set, get) => ({
     };
   },
 }));
+
+/**
+ * 播放时钟单例。
+ *
+ * 依赖全部来自本模块内的 store，因此它在**任何组件挂载之前**就可用 ——
+ * 播放不依赖 `PreviewCanvas` 是否渲染。
+ */
+const clock: PlaybackClock = createPlaybackClock({
+  getTimeMs: () => usePlaybackStore.getState().currentTimeMs,
+  setTimeMs: (ms) => {
+    usePlaybackStore.getState().setCurrentTime(ms);
+  },
+  getPlaybackRate: () => usePlaybackStore.getState().playbackRate,
+  getDurationMs: currentDurationMs,
+  onStopped: () => {
+    usePlaybackStore.setState({ isPlaying: false });
+  },
+});
+
+/** 取得播放时钟单例（测试与降级驱动用）。 */
+export function getPlaybackClock(): PlaybackClock {
+  return clock;
+}
 
 /** 便捷读取：当前播放位置（命令式）。 */
 export function getCurrentTimeMs(): number {
