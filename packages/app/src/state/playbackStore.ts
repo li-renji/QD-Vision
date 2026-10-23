@@ -40,14 +40,13 @@ export interface PlaybackState {
   frameDurationMs: number;
 
   /**
-   * 写回时间线位置。
+   * 写回时间线位置（毫秒，负值按 0 处理）。
    *
-   * @param ms 目标时间（毫秒，负值按 0 处理）
-   * @param options `rebase: false` 表示**不要**重置时钟基准 ——
-   *   仅供播放时钟自身写回使用。外部调用（seek / 逐帧 / 变速）必须走默认
-   *   的 `rebase: true`，否则时钟会用旧锚点覆盖用户刚操作到的位置。
+   * 每次写入都会 `rebase()` 把时钟锚点拉到新位置：
+   * - 外部调用（seek / 逐帧 / 变速）—— 这是它**必须**重置基准的原因；
+   * - 时钟自身每帧写回 —— 同样安全，见实现处注释。
    */
-  setCurrentTime: (ms: number, options?: SetCurrentTimeOptions) => void;
+  setCurrentTime: (ms: number) => void;
   setIsPlaying: (playing: boolean) => void;
   setPlaybackRate: (rate: number) => void;
   setFrameDuration: (ms: number) => void;
@@ -65,19 +64,6 @@ export interface PlaybackState {
 
 /** 命令式回调集合（不参与 React 渲染）。 */
 const frameListeners = new Set<(timeMs: number) => void>();
-
-/** `setCurrentTime` 的可选参数。 */
-export interface SetCurrentTimeOptions {
-  /**
-   * 是否重置时钟基准。默认 `true`。
-   *
-   * 播放时钟**自身**每帧写回时传 `false`：此时 `playbackClock.tick()` 已经
-   * 自行把锚点推进到了正确位置，再 `rebase()` 会把 `anchorPerfMs` 重置为
-   * 「写回那一刻」，使下一帧的 delta 变成两次 rAF 之间的真实间隔 —— 结果正确，
-   * 但会让「自持基准」与「无条件 rebase」互相掩盖，掩盖真正的时序问题。
-   */
-  rebase?: boolean;
-}
 
 /**
  * 解析时间线总时长（毫秒）。
@@ -104,12 +90,18 @@ export const usePlaybackStore = create<PlaybackState>()((set, get) => ({
   playbackRate: 1,
   frameDurationMs: 1000 / 30,
 
-  setCurrentTime: (ms, options) => {
+  setCurrentTime: (ms) => {
     const clamped = Math.max(0, ms);
     set({ currentTimeMs: clamped });
-    // 外部写入（seek / 逐帧 / 变速）必须重置基准，否则时钟会用旧锚点
-    // 把用户刚拖到的位置覆盖掉。时钟自身写回传 rebase:false 跳过。
-    if (options?.rebase !== false) clock.rebase();
+    // 重置时钟基准：任何一次外部写入（seek / 逐帧 / 变速）都要把锚点拉到
+    // 用户刚操作到的位置，否则时钟会用旧锚点把它覆盖掉。
+    //
+    // 时钟自身每帧写回**也**走这里，这是安全的：`set()` 先于 `rebase()` 执行，
+    // 所以 rebase 读到的是刚写入的新值，`anchorTimeMs` 不会被置回旧值；
+    // 而 `anchorPerfMs` 虽被重置为「写回那一刻」，下一帧的 delta 依然是
+    // 两次 rAF 之间的真实间隔（约 16ms）。逐帧轨迹见 playbackClock 的
+    // 「时钟自持基准」用例。
+    clock.rebase();
     for (const listener of frameListeners) listener(clamped);
   },
 
@@ -180,8 +172,8 @@ export const usePlaybackStore = create<PlaybackState>()((set, get) => ({
 const clock: PlaybackClock = createPlaybackClock({
   getTimeMs: () => usePlaybackStore.getState().currentTimeMs,
   setTimeMs: (ms) => {
-    // 走**不触发 rebase** 的内部通道：tick() 已自行维护锚点
-    usePlaybackStore.getState().setCurrentTime(ms, { rebase: false });
+    // 走公开入口：setCurrentTime 内部会 rebase，对时钟自身写回同样安全
+    usePlaybackStore.getState().setCurrentTime(ms);
   },
   getPlaybackRate: () => usePlaybackStore.getState().playbackRate,
   getDurationMs: currentDurationMs,

@@ -62,8 +62,8 @@ function createHarness(init?: {
     getTimeMs: () => timeMs,
     setTimeMs: (ms) => {
       timeMs = Math.max(0, ms);
-      // 与真实 store 的**内部通道**一致：时钟自身写回不触发 rebase
-      if (init?.rebaseOnWrite ?? false) clock.rebase();
+      // 与真实 store 一致：每次写入都重置基准
+      if (init?.rebaseOnWrite ?? true) clock.rebase();
     },
     getPlaybackRate: () => rate,
     getDurationMs: () => durationMs,
@@ -126,48 +126,19 @@ function createHarness(init?: {
 
 describe('state/playbackClock', () => {
   /**
-   * 回归防护：曾被怀疑「时钟自己写入 → 触发 rebase → delta 被自己吃掉 → 卡死在第一帧」。
-   *
-   * 本文件的 harness 默认**不** rebase（与生产 store 的内部通道一致）。
-   *
-   * 关于「rebase 会不会吃掉 delta」的准确结论：`rebase()` 记录的是一对自洽坐标
-   * `(anchorTimeMs, anchorPerfMs) = (刚写入的时间, 写入那一刻的真实时间)`。
-   * 下一帧 rAF 触发时 `now()` 已经比写入时刻**晚了整整一帧**（约 16ms），
-   * 所以 delta ≈ 16ms 而不是 0 —— rebase 本身不会造成冻结。
-   * 但时钟既然已经自持基准，就不需要 rebase 参与，故生产走 `rebase:false`，
-   * 让「谁负责维护锚点」这件事只有一处。
-   */
-  it('时钟自持基准（写入路径不 rebase）：逐帧严格递增，不会卡在第一帧', () => {
-    const h = createHarness({ durationMs: 600_000, rebaseOnWrite: false });
-    h.clock.start();
-
-    const samples: number[] = [];
-    for (let frame = 0; frame < 10; frame += 1) {
-      h.advance(16);
-      samples.push(h.timeMs);
-    }
-
-    // 若锚点没推进，第二帧起就会永远停在 16
-    for (let index = 1; index < samples.length; index += 1) {
-      expect(samples[index]).toBeGreaterThan(samples[index - 1] ?? 0);
-    }
-    // 10 帧 × 16ms = 160ms
-    expect(samples[samples.length - 1]).toBeGreaterThan(150);
-    expect(samples[0]).toBe(16);
-  });
-
-  /**
-   * 回归防护：时钟**不得依赖**外部 `rebase()` 才能推进。
-   *
-   * 历史隐患：早期实现里 `anchorTimeMs` 只由 `rebase()` 更新，一旦
-   * `setCurrentTime` 没有调用 `rebase()`，`anchorTimeMs` 就永远停在 0，
-   * 时钟**卡死在第一帧**（≈16ms → 30fps 时间码显示 `00:00:00:00`，
-   * 肉眼看就是「播放头完全不动」）。
-   *
-   * 现在 `tick()` 自己也会把 `anchorTimeMs` 推进到 `nextMs`，
-   * 因此即使写入路径完全不 rebase，时钟依旧正常前进。
-   */
-  it('即使写入路径不调用 rebase，时钟仍能自持推进（不会卡在第一帧）', () => {
+ * 依赖契约：时钟**自持基准**，不依赖写入方是否调用 `rebase()`。
+ *
+ * 曾担心「时钟写回触发 rebase → `anchorPerfMs` 被抹掉 → delta 恒为 0 →
+ * 卡死在第一帧（≈16ms，30fps 下正好显示 `00:00:00:00`）」。
+ *
+ * 结论是不成立：`tick()` 自己在写回**之前**就把 `anchorTimeMs` 推进到了
+ * `nextMs`，所以
+ * - 有 rebase：`rebase()` 读到的是刚写入的同一个值，无副作用；
+ * - 无 rebase：锚点仍由 tick 推进，时钟照常前进。
+ *
+ * 本用例锁定后者，确保这份「不依赖」是**结构性保证**而非巧合。
+ */
+it('写入方不调用 rebase 时，时钟仍自持推进（不会卡在第一帧）', () => {
     const h = createHarness({ durationMs: 600_000, rebaseOnWrite: false });
     h.clock.start();
 
@@ -177,7 +148,7 @@ describe('state/playbackClock', () => {
       samples.push(h.timeMs);
     }
 
-    // 8 帧 × 16ms = 128ms。若依赖外部 rebase，这里会恒为 16
+    // 8 帧 × 16ms = 128ms
     expect(samples[samples.length - 1]).toBe(128);
     for (let index = 1; index < samples.length; index += 1) {
       expect(samples[index]).toBeGreaterThan(samples[index - 1] ?? 0);
