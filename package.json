@@ -1,0 +1,51 @@
+{
+  "name": "clipcut-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ClipCut Web · 纯浏览器视频剪辑器（零安装 / 素材不出本地 / AI 可插拔）",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @clipcut/app dev",
+    "build": "pnpm -r build",
+    "preview": "pnpm --filter @clipcut/app preview",
+    "test": "pnpm --filter @clipcut/app test && pnpm --filter @clipcut/shared-types test && node scripts/verify-test-count.mjs",
+    "test:watch": "pnpm --filter @clipcut/app test:watch",
+    "test:coverage": "pnpm --filter @clipcut/app test:coverage",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "pnpm --filter @clipcut/shared-types build && pnpm -r typecheck && tsc -p tsconfig.configs.json --noEmit",
+    "schema:check": "pnpm --filter @clipcut/app exec vitest run --root . src/domain/project/__tests__/schema.test.ts",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,css,md}\"",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm schema:check && pnpm check:prd-sync",
+    "test:workspace": "vitest run --workspace .",
+    "check:prd-sync": "node scripts/check-prd-sync.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@playwright/test": "^1.49.1",
+    "@types/node": "^20.11.30",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/ws": "^8.5.10",
+    "@vitejs/plugin-react": "^4.3.4",
+    "@vitest/coverage-v8": "^2.1.8",
+    "autoprefixer": "^10.4.19",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.16",
+    "globals": "^15.14.0",
+    "happy-dom": "^15.11.6",
+    "playwright": "^1.49.1",
+    "postcss": "^8.4.49",
+    "prettier": "^3.4.2",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.2",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  }
+}

@@ -1,0 +1,7 @@
+packages:
+  - 'packages/*'
+
+# pnpm 12 构建脚本白名单：esbuild 需要 postinstall 安装平台二进制。
+# 等价于 pnpm 10 的 `onlyBuiltDependencies: [esbuild]`。
+allowBuilds:
+  esbuild: true

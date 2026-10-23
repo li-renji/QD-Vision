@@ -1,0 +1,131 @@
+classDiagram
+    class ProjectDoc {
+        +string schemaVersion
+        +string projectId
+        +string name
+        +string createdAt
+        +string updatedAt
+        +Generator generator
+        +ProjectSettings settings
+        +Record~string,Asset~ assets
+        +Track[] tracks
+        +SubtitleDoc subtitles
+        +ProjectMeta meta
+    }
+
+    class Track {
+        +string id
+        +TrackType type
+        +string name
+        +number order
+        +boolean muted
+        +boolean hidden
+        +boolean locked
+        +number height
+        +Clip[] clips
+    }
+
+    class Clip {
+        +string id
+        +string? assetId
+        +number startMs
+        +number durationMs
+        +number inMs
+        +number outMs
+        +number speed
+        +boolean isOverlay
+        +number zIndex
+        +ClipTransform transform
+        +ClipAudioProps audio
+        +ClipTextProps? text
+        +string? label
+    }
+
+    class ClipTransform {
+        +number x
+        +number y
+        +number scale
+        +number rotation
+        +number opacity
+        +FitMode fit
+        +number cornerRadius
+    }
+
+    class ClipAudioProps {
+        +boolean muted
+        +number gain
+        +number fadeInMs
+        +number fadeOutMs
+    }
+
+    class Asset {
+        +string id
+        +AssetType type
+        +string name
+        +string mimeType
+        +number sizeBytes
+        +string? blobKey
+        +string? thumbnailBlobKey
+        +number[]? waveform
+        +number durationMs
+        +boolean playable
+    }
+
+    class SubtitleDoc {
+        +boolean enabled
+        +SubtitleStyle style
+        +SubtitleCue[] cues
+    }
+
+    class ProjectSettings {
+        +CanvasSettings canvas
+        +ExportSettings export
+        +AISettings ai
+    }
+
+    class PlatformBridge {
+        <<interface>>
+        +readFile(options) File[]
+        +saveFile(name, blob, options) void
+        +listFiles(handle) File[]
+        +storage(key, value) T
+        +getMediaDuration(blob) number
+        +capability() PlatformCapabilities
+    }
+
+    class AIProvider {
+        <<interface>>
+        +string id
+        +string name
+        +string kind
+        +AICapability[] capabilities
+        +isConfigured() boolean
+        +run(capability, input, options) AIOutputMap
+    }
+
+    class ProviderRouter {
+        +ProviderRegistry registry
+        +routes
+        +fallbackChains
+        +resolve(capability) AIProvider
+        +run(capability, input, options) AIOutputMap
+        +listStatus() ProviderStatus[]
+    }
+
+    class ProviderRegistry {
+        +register(provider) void
+        +unregister(id) void
+        +get(id) AIProvider
+        +list() AIProvider[]
+        +listByCapability(capability) AIProvider[]
+    }
+
+    ProjectDoc "1" *-- "many" Track
+    ProjectDoc "1" *-- "many" Asset
+    ProjectDoc "1" *-- "1" ProjectSettings
+    ProjectDoc "1" *-- "1" SubtitleDoc
+    Track "1" *-- "many" Clip
+    Clip "1" *-- "1" ClipTransform
+    Clip "1" *-- "1" ClipAudioProps
+    ProviderRouter "1" --> "1" ProviderRegistry
+    ProviderRegistry "1" o-- "many" AIProvider

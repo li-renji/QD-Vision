@@ -1,0 +1,127 @@
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant MP as MediaPanel
+    participant AS as assetService
+    participant PB as PlatformBridge
+    participant BR as blobRepo(IndexedDB)
+    participant PR as metadataProbe
+    participant TS as thumbnailService
+    participant WS as waveformService
+    participant PS as projectStore
+    participant HX as historyStore
+
+    U->>MP: 拖入 / 选择 3 个文件
+    MP->>AS: importFiles(File[])
+    AS->>PB: capability()
+    PB-->>AS: { webCodecs, fileSystemAccess, ... }
+    loop 每个文件
+        AS->>PR: probe(file)
+        alt 视频
+            PR->>PR: HTMLVideoElement 读取 duration/width/height
+        else 音频
+            PR->>PR: decodeAudioData → duration/hasAudio
+        else 图片
+            PR->>PR: Image 解码 → width/height
+        end
+        PR-->>AS: AssetMeta（失败则 duration=0 且 playable=false）
+        opt 视频
+            AS->>TS: captureFrameAt(file, 1000ms)
+            TS-->>AS: thumbnail Blob
+        end
+        opt 音频
+            AS->>WS: computePeaks(file, 400)
+            WS-->>AS: number[400]（0~1 归一化）
+        end
+        AS->>BR: putBlob(blobKey, file)
+        BR-->>AS: ok
+        AS->>PS: addAsset(asset)
+        PS->>HX: push(inversePatches)
+    end
+    AS-->>MP: { imported: 2, failed: 1, reason }
+    MP-->>U: Toast「导入 2 个，1 个格式不支持」
+
+    autonumber
+    participant RL as useRenderLoop(rAF)
+    participant PS as playbackStore
+    participant CO as render/compositor
+    participant FP as frameProviders
+    participant TX as drawText
+    participant CV as PreviewCanvas
+
+    RL->>PS: getState().currentTimeMs
+    PS-->>RL: 12345 ms
+    RL->>CO: renderFrame(ctx, doc, 12345ms)
+    loop 按 order 从下往上
+        alt 普通视频 clip
+            CO->>FP: getFrameAt(assetId, sourceMs)
+            FP-->>CO: ImageBitmap
+            CO->>CO: drawImage（fit + transform + opacity + cornerRadius）
+        else isOverlay（画中画）
+            CO->>FP: getFrameAt(...)
+            FP-->>CO: ImageBitmap
+            CO->>CO: 独立变换绘制（zIndex 排序，≤4 层）
+        else 文字 clip
+            CO->>TX: drawText(ctx, textProps, transform)
+            TX->>CV: 描边/背景/换行/对齐
+        end
+    end
+    opt subtitles.enabled
+        CO->>CO: 绘制当前激活 cue
+    end
+    CO-->>RL: void（已绘制到 canvas）
+
+    autonumber
+    participant EC as exportController
+    participant CP as capabilityProbe
+    participant WP as webCodecsExporter
+    participant CO as render/compositor
+    participant VE as VideoEncoder
+    participant AX as AudioEncoder
+    participant MX as mp4-muxer
+    participant BR as blobRepo
+    participant DL as download
+
+    U->>EC: start({ width, height, fps, format, bitrate })
+    EC->>CP: probe()
+    CP-->>EC: { mp4:{video:'avc1.640028', audio:'mp4a.40.2'}, ... }
+    EC->>MX: new Muxer({ target: ArrayBufferTarget, ... })
+    loop 帧 i = 0 .. totalFrames-1
+        EC->>WP: 渲染第 i 帧
+        WP->>CO: renderFrame(ctx, doc, timeMs)
+        CO-->>WP: Canvas
+        WP->>VE: encode(VideoFrame{ timestamp: i*1e6/fps })
+        VE-->>WP: chunk
+        WP->>MX: addVideoChunk(chunk)
+    end
+    WP->>AX: encode(AudioData)
+    AX-->>WP: chunk
+    WP->>MX: addAudioChunk(chunk)
+    WP->>MX: finalize()
+    MX-->>WP: ArrayBuffer
+    WP->>BR: putBlob('export:job_x', blob)
+    EC->>DL: 触发下载
+    Note over EC,DL: 用户取消 → AbortController → encoder.close() + muxer 释放 + ObjectURL revoke
+
+    autonumber
+    participant AG as 外部 MCP 客户端
+    participant MS as mcp-server(stdio)
+    participant BR as ClipCutBridge
+    participant WS as WebSocket host(localhost:8765)
+    participant K as app 剪辑内核
+
+    AG->>MS: tools/call timeline.split_clip
+    MS->>BR: call('timeline.split_clip', { clipId, atMs })
+    BR->>WS: { type:'tool.call', id, tool, args }
+    WS->>K: 推送
+    alt 已连接
+        K-->>WS: { type:'tool.result', ok:true, result }
+        WS-->>BR: 响应
+        BR-->>MS: 结果
+        MS-->>AG: MCP 工具结果
+    else 通道断开
+        WS-->>BR: error CHANNEL_DISCONNECTED
+        BR-->>MS: 抛明确错误（不静默）
+        MS-->>AG: error（进程不崩）
+    end
+    Note over K,DOM: V1.0 空实现路径：返回 NOT_IMPLEMENTED 结构化错误

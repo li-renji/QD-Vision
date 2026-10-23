@@ -1,0 +1,48 @@
+%% ClipCut Web · 时序图 4/5：导出（WebCodecs 主路径）
+%% 对应 docs/ARCHITECTURE.md §7.4
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant ES as ExportInspector
+    participant EC as exportController
+    participant CP as capabilityProbe
+    participant WP as webCodecsExporter
+    participant CO as render/compositor
+    participant FP as frameProviders(mp4Decoder)
+    participant AE as audioEngine(OfflineAudioContext)
+    participant VE as VideoEncoder
+    participant AX as AudioEncoder
+    participant MX as mp4-muxer
+    participant BR as blobRepo
+    participant DL as download
+
+    U->>ES: 选 1080p30 MP4 → 点「开始导出」
+    ES->>EC: start({ width, height, fps, format, bitrate })
+    EC->>CP: probe()
+    CP-->>EC: { mp4:{video:'avc1.640028', audio:'mp4a.40.2'}, webm:{...} }
+    EC->>EC: 若所选格式不支持 → 提示并自动降级建议
+    EC->>AE: 离线渲染混音总线（OfflineAudioContext）
+    AE-->>EC: AudioBuffer(48kHz, 混音结果，与预览同拓扑)
+    EC->>MX: new Muxer({ target: ArrayBufferTarget, video:{codec:'avc'}, audio:{codec:'aac'} })
+    loop 帧 i = 0 .. totalFrames-1
+        EC->>WP: 渲染第 i 帧
+        WP->>FP: getFrameAt(assetId, sourceMs)
+        FP-->>WP: VideoFrame（硬解）
+        WP->>CO: drawImage + transform + 文字 + 字幕
+        CO-->>WP: OffscreenCanvas
+        WP->>VE: encode(VideoFrame{ timestamp: i*1e6/fps })
+        VE-->>WP: chunk
+        WP->>MX: addVideoChunk(chunk)
+    end
+    WP->>AE: 分片为 AudioData（1024 samples/帧）
+    AE-->>WP: AudioData
+    WP->>AX: encode(audioData)
+    AX-->>WP: chunk
+    WP->>MX: addAudioChunk(chunk)
+    WP->>MX: finalize()
+    MX-->>WP: ArrayBuffer
+    WP-->>EC: Blob
+    EC->>BR: putBlob('export:job_x', blob) + 写历史
+    EC-->>ES: 进度事件（当前/总时长/已用/预计剩余）
+    EC->>DL: 触发下载
+    Note over EC,DL: 用户取消 → AbortController → encoder.close() + muxer 释放 + ObjectURL revoke

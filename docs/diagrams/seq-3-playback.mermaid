@@ -1,0 +1,28 @@
+%% ClipCut Web · 时序图 3/5：播放
+%% 对应 docs/ARCHITECTURE.md §7.3
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant UI as TopToolbar / PreviewControls
+    participant HK as useHotkeys
+    participant PB as playbackStore
+    participant AE as audioEngine(AudioContext)
+    participant VP as videoPool
+    participant RL as useRenderLoop
+    participant PH as Playhead
+
+    U->>UI: 按 Space
+    UI->>HK: 快捷键分发（输入框聚焦则忽略）
+    HK->>PB: togglePlay()
+    PB-->>AE: play()（AudioContext.resume + 元素 play）
+    AE->>VP: 同步所有活动 clip 元素到播放头位置
+    loop 每个 rAF
+        RL->>PB: currentTimeMs（AudioContext.currentTime 为主时钟）
+        PB-->>RL: t
+        RL->>VP: requestVideoFrameCallback 校正漂移（>40ms 才 seek）
+        RL->>PH: 直接改 style.transform（不触发 React 重渲染）
+    end
+    U->>UI: 按 `,` / `.`
+    UI->>PB: stepFrame(-1 / +1)
+    PB-->>AE: 精确定位到 t ± 1000/fps
+    PB-->>RL: 强制重绘一帧

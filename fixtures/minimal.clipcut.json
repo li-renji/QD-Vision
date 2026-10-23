@@ -1,0 +1,114 @@
+{
+  "schemaVersion": "1.0.0",
+  "projectId": "6f1a0c2e-9b3d-4a51-8c7e-2d4b6f8a0c12",
+  "name": "最小工程",
+  "createdAt": "2026-10-23T00:00:00.000Z",
+  "updatedAt": "2026-10-23T00:00:00.000Z",
+  "generator": {
+    "app": "clipcut-web",
+    "version": "1.0.0"
+  },
+  "settings": {
+    "canvas": {
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "aspectPreset": "16:9",
+      "backgroundColor": "#000000"
+    },
+    "export": {
+      "format": "mp4",
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "videoBitrate": 8000000,
+      "audioBitrate": 192000,
+      "burnInSubtitle": false
+    },
+    "ai": {
+      "routes": {},
+      "providers": {}
+    }
+  },
+  "assets": {
+    "asset_min01": {
+      "id": "asset_min01",
+      "type": "video",
+      "name": "sample.mp4",
+      "sourceType": "local",
+      "mimeType": "video/mp4",
+      "sizeBytes": 1048576,
+      "blobKey": "blob:asset_min01",
+      "proxyBlobKey": null,
+      "thumbnailBlobKey": null,
+      "waveform": null,
+      "durationMs": 5000,
+      "width": 1920,
+      "height": 1080,
+      "frameRate": 30,
+      "hasAudio": true,
+      "videoCodec": "avc1.640028",
+      "playable": true,
+      "license": null,
+      "importedAt": "2026-10-23T00:00:00.000Z"
+    }
+  },
+  "tracks": [
+    {
+      "id": "track_min_v1",
+      "type": "video",
+      "name": "视频轨 1",
+      "order": 0,
+      "muted": false,
+      "hidden": false,
+      "locked": false,
+      "height": 64,
+      "clips": [
+        {
+          "id": "clip_min_c1",
+          "assetId": "asset_min01",
+          "startMs": 0,
+          "durationMs": 5000,
+          "inMs": 0,
+          "outMs": 5000,
+          "speed": 1,
+          "isOverlay": false,
+          "zIndex": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "scale": 1,
+            "rotation": 0,
+            "opacity": 1,
+            "fit": "contain",
+            "cornerRadius": 0
+          },
+          "audio": {
+            "muted": false,
+            "gain": 1,
+            "fadeInMs": 0,
+            "fadeOutMs": 0
+          },
+          "label": null
+        }
+      ]
+    }
+  ],
+  "subtitles": {
+    "enabled": false,
+    "style": {
+      "fontFamily": "Noto Sans SC",
+      "fontSize": 48,
+      "color": "#FFFFFF",
+      "strokeColor": "#000000",
+      "strokeWidth": 3,
+      "align": "center",
+      "bottomOffsetPx": 80
+    },
+    "cues": []
+  },
+  "meta": {
+    "durationMs": 5000,
+    "lastExport": null
+  }
+}

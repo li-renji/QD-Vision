@@ -1,0 +1,38 @@
+%% ClipCut Web · 时序图 2/5：时间线渲染（合成一帧）
+%% 对应 docs/ARCHITECTURE.md §7.2
+sequenceDiagram
+    autonumber
+    participant RL as useRenderLoop(rAF)
+    participant PS as playbackStore
+    participant SEL as timeline/selectors
+    participant CO as render/compositor
+    participant FP as frameProviders
+    participant VP as videoPool
+    participant TX as drawText
+    participant CV as PreviewCanvas
+
+    RL->>PS: getState().currentTimeMs
+    PS-->>RL: 12345 ms
+    RL->>SEL: visibleLayers(doc, 12345ms)
+    SEL-->>RL: [videoTrack0 clips…, videoTrack1 clip(overlay), textTrack clip]
+    RL->>CO: renderFrame(ctx, doc, 12345ms)
+    loop 按 order 从下往上
+        alt 普通视频 clip
+            CO->>FP: getFrameAt(assetId, sourceMs)
+            FP->>VP: seek + createImageBitmap
+            VP-->>CO: ImageBitmap
+            CO->>CO: drawImage（fit + transform + opacity + cornerRadius）
+        else isOverlay（画中画）
+            CO->>FP: getFrameAt(...)
+            FP-->>CO: ImageBitmap
+            CO->>CO: 独立变换绘制（zIndex 排序，≤4 层）
+        else 文字 clip
+            CO->>TX: drawText(ctx, textProps, transform)
+            TX->>CV: 描边/背景/换行/对齐
+        end
+    end
+    opt subtitles.enabled
+        CO->>CO: 绘制当前激活 cue（可选烧录）
+    end
+    CO-->>RL: void（已绘制到 canvas）
+    RL-->>CV: 帧提交

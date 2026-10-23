@@ -1,0 +1,115 @@
+{
+  "schemaVersion": "0.9.0",
+  "projectId": "aa11bb22-cc33-4d44-8e55-ff6677889900",
+  "name": "旧版本工程",
+  "createdAt": "2025-12-01T00:00:00.000Z",
+  "updatedAt": "2025-12-31T00:00:00.000Z",
+  "generator": {
+    "app": "clipcut-web",
+    "version": "0.9.0"
+  },
+  "settings": {
+    "canvas": {
+      "width": 1280,
+      "height": 720,
+      "fps": 25,
+      "aspectPreset": "16:9",
+      "backgroundColor": "#000000"
+    },
+    "export": {
+      "format": "webm",
+      "width": 1280,
+      "height": 720,
+      "fps": 25,
+      "videoBitrate": 4000000,
+      "audioBitrate": 128000,
+      "burnInSubtitle": false
+    },
+    "ai": {
+      "routes": {},
+      "providers": {}
+    }
+  },
+  "assets": {
+    "asset_legacy1": {
+      "id": "asset_legacy1",
+      "type": "video",
+      "name": "old.mp4",
+      "sourceType": "local",
+      "mimeType": "video/mp4",
+      "sizeBytes": 2097152,
+      "blobKey": "blob:asset_legacy1",
+      "proxyBlobKey": null,
+      "thumbnailBlobKey": null,
+      "waveform": null,
+      "durationMs": 4000,
+      "width": 1280,
+      "height": 720,
+      "frameRate": 25,
+      "hasAudio": true,
+      "videoCodec": "avc1.42E01E",
+      "playable": true,
+      "license": null,
+      "importedAt": "2025-12-01T00:00:00.000Z"
+    }
+  },
+  "tracks": [
+    {
+      "id": "track_legacy_v1",
+      "type": "video",
+      "name": "旧视频轨",
+      "order": 0,
+      "muted": false,
+      "hidden": false,
+      "locked": false,
+      "height": 60,
+      "clips": [
+        {
+          "id": "clip_legacy_c1",
+          "assetId": "asset_legacy1",
+          "startMs": 0,
+          "durationMs": 4000,
+          "inMs": 0,
+          "outMs": 4000,
+          "speed": 1,
+          "isOverlay": false,
+          "zIndex": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "scale": 1,
+            "rotation": 0,
+            "opacity": 1,
+            "fit": "contain",
+            "cornerRadius": 0
+          },
+          "audio": {
+            "muted": false,
+            "gain": 1,
+            "fadeInMs": 0,
+            "fadeOutMs": 0
+          },
+          "label": null
+        }
+      ]
+    }
+  ],
+  "subtitles": {
+    "enabled": false,
+    "style": {
+      "fontFamily": "Noto Sans SC",
+      "fontSize": 40,
+      "color": "#FFFFFF",
+      "strokeColor": "#000000",
+      "strokeWidth": 2,
+      "align": "center",
+      "bottomOffsetPx": 60
+    },
+    "cues": []
+  },
+  "meta": {
+    "durationMs": 4000,
+    "lastExport": null
+  },
+  "legacyComment": "0.9.x 时代的自定义字段，迁移后必须原样保留"
+}

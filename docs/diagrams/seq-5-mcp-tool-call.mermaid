@@ -1,0 +1,28 @@
+%% ClipCut Web · 时序图 5/5：MCP 工具调用（骨架）
+%% 对应 docs/ARCHITECTURE.md §7.5
+sequenceDiagram
+    autonumber
+    participant AG as 外部 MCP 客户端
+    participant MS as mcp-server(stdio)
+    participant BR as ClipCutBridge
+    participant WS as WebSocket host(localhost:8765)
+    participant K as app 剪辑内核
+    participant DOM as projectStore
+
+    AG->>MS: tools/call timeline.split_clip
+    MS->>BR: call('timeline.split_clip', { clipId, atMs })
+    BR->>WS: { type:'tool.call', id, tool, args }
+    WS->>K: 推送
+    alt 已连接
+        K->>DOM: splitClip(...)
+        DOM-->>K: 新 clip
+        K-->>WS: { type:'tool.result', ok:true, result }
+        WS-->>BR: 响应
+        BR-->>MS: 结果
+        MS-->>AG: MCP 工具结果
+    else 通道断开
+        WS-->>BR: error CHANNEL_DISCONNECTED
+        BR-->>MS: 抛明确错误（不静默）
+        MS-->>AG: error（进程不崩）
+    end
+    Note over K,DOM: V1.0 空实现路径：返回 NOT_IMPLEMENTED 结构化错误

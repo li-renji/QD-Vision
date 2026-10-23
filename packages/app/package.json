@@ -1,0 +1,43 @@
+{
+  "name": "@clipcut/app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ClipCut Web 主应用（Vite + React + TypeScript）",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "test": "vitest run --root . --reporter=default --reporter=json --outputFile=./test-results.json",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest --root ."
+  },
+  "dependencies": {
+    "@clipcut/ai-provider-sdk": "workspace:*",
+    "@clipcut/shared-types": "workspace:*",
+    "@radix-ui/react-context-menu": "^2.2.4",
+    "@radix-ui/react-dialog": "^1.1.2",
+    "@radix-ui/react-dropdown-menu": "^2.1.2",
+    "@radix-ui/react-slider": "^1.2.1",
+    "@radix-ui/react-tooltip": "^1.1.4",
+    "ajv": "^8.17.1",
+    "idb": "^8.0.0",
+    "immer": "^10.1.1",
+    "mp4-muxer": "^5.1.5",
+    "mp4box": "^0.5.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "fake-indexeddb": "^6.0.0",
+    "happy-dom": "^15.11.6",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  }
+}

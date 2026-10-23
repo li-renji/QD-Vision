@@ -1,0 +1,124 @@
+/**
+ * 全局样式：Tailwind 指令 + CSS 变量设计令牌 + 基础样式 + 滚动条。
+ *
+ * 主题：V1.0 仅暗色单主题，预留 `data-theme` 钩子。
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* 背景 */
+    --cc-bg-app: #0e0f13;
+    --cc-bg-panel: #16181f;
+    --cc-bg-elevated: #1d2029;
+    --cc-bg-track: #232733;
+    --cc-bg-clip: #3a4a6b;
+    --cc-bg-clip-selected: #4f7bd6;
+    --cc-bg-clip-text: #7a5ea8;
+
+    /* 前景 */
+    --cc-fg-primary: #e8eaf0;
+    --cc-fg-secondary: #a0a5b5;
+    --cc-fg-muted: #6b7080;
+
+    /* 强调色 */
+    --cc-accent: #4f7bd6;
+    --cc-accent-hover: #5f8ae4;
+    --cc-danger: #e05252;
+    --cc-warning: #d8a13a;
+    --cc-success: #46a86b;
+
+    /* 描边 */
+    --cc-border: #2a2e3a;
+    --cc-border-strong: #3b4152;
+
+    /* 尺寸 */
+    --cc-toolbar-height: 48px;
+    --cc-statusbar-height: 26px;
+    --cc-track-header-width: 160px;
+    --cc-radius-sm: 4px;
+    --cc-radius-md: 6px;
+    --cc-radius-lg: 10px;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    background-color: var(--cc-bg-app);
+    color: var(--cc-fg-primary);
+    font-family:
+      'Inter',
+      'Noto Sans SC',
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      'PingFang SC',
+      'Microsoft YaHei',
+      sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--cc-border-strong);
+    border-radius: 5px;
+    border: 2px solid var(--cc-bg-app);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--cc-fg-muted);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--cc-border-strong) transparent;
+  }
+}
+
+@layer components {
+  .cc-panel {
+    background-color: var(--cc-bg-panel);
+    border: 1px solid var(--cc-border);
+    border-radius: var(--cc-radius-md);
+  }
+
+  .cc-input {
+    @apply w-full rounded px-2 py-1 text-xs outline-none transition-colors;
+    background-color: var(--cc-bg-elevated);
+    border: 1px solid var(--cc-border);
+    color: var(--cc-fg-primary);
+  }
+
+  .cc-input:focus {
+    border-color: var(--cc-accent);
+  }
+
+  .cc-label {
+    @apply text-[11px] uppercase tracking-wide;
+    color: var(--cc-fg-muted);
+  }
+
+  .cc-divider {
+    height: 1px;
+    background-color: var(--cc-border);
+  }
+}

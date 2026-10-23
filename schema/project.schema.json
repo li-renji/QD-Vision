@@ -1,0 +1,369 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipcut.dev/schema/project.schema.json",
+  "title": "ClipCut Web 工程文件",
+  "description": "ClipCut Web 工程（.clipcut.json）的 JSON Schema —— 唯一真源",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "projectId",
+    "name",
+    "createdAt",
+    "updatedAt",
+    "generator",
+    "settings",
+    "assets",
+    "tracks",
+    "subtitles",
+    "meta"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "projectId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "createdAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "updatedAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generator": {
+      "type": "object",
+      "required": ["app", "version"],
+      "additionalProperties": true,
+      "properties": {
+        "app": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "required": ["canvas", "export", "ai"],
+      "additionalProperties": true,
+      "properties": {
+        "canvas": { "$ref": "#/$defs/canvasSettings" },
+        "export": { "$ref": "#/$defs/exportSettings" },
+        "ai": { "$ref": "#/$defs/aiSettings" }
+      }
+    },
+    "assets": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/asset" }
+    },
+    "tracks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/track" }
+    },
+    "subtitles": { "$ref": "#/$defs/subtitleDoc" },
+    "meta": { "$ref": "#/$defs/projectMeta" }
+  },
+  "$defs": {
+    "canvasSettings": {
+      "type": "object",
+      "required": ["width", "height", "fps", "aspectPreset", "backgroundColor"],
+      "additionalProperties": true,
+      "properties": {
+        "width": { "type": "number", "minimum": 1, "maximum": 7680 },
+        "height": { "type": "number", "minimum": 1, "maximum": 4320 },
+        "fps": { "type": "number", "minimum": 10, "maximum": 240 },
+        "aspectPreset": {
+          "type": "string",
+          "enum": ["16:9", "9:16", "1:1", "4:5", "custom"]
+        },
+        "backgroundColor": { "type": "string" }
+      }
+    },
+    "exportSettings": {
+      "type": "object",
+      "required": [
+        "format",
+        "width",
+        "height",
+        "fps",
+        "videoBitrate",
+        "audioBitrate",
+        "burnInSubtitle"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "format": { "type": "string", "enum": ["mp4", "webm"] },
+        "width": { "type": "number", "minimum": 1, "maximum": 7680 },
+        "height": { "type": "number", "minimum": 1, "maximum": 4320 },
+        "fps": { "type": "number", "minimum": 10, "maximum": 60 },
+        "videoBitrate": { "type": "number", "minimum": 0 },
+        "audioBitrate": { "type": "number", "minimum": 0 },
+        "burnInSubtitle": { "type": "boolean" }
+      }
+    },
+    "aiSettings": {
+      "type": "object",
+      "required": ["routes", "providers"],
+      "additionalProperties": true,
+      "properties": {
+        "routes": {
+          "type": "object",
+          "additionalProperties": { "type": ["string", "null"] }
+        },
+        "providers": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/providerConfig" }
+        }
+      }
+    },
+    "providerConfig": {
+      "type": "object",
+      "required": ["type", "baseUrl", "model", "apiKey"],
+      "additionalProperties": true,
+      "properties": {
+        "type": { "type": "string", "enum": ["local", "cloud", "webgpu"] },
+        "baseUrl": { "type": ["string", "null"] },
+        "model": { "type": ["string", "null"] },
+        "apiKey": { "type": ["string", "null"] }
+      }
+    },
+    "clipTransform": {
+      "type": "object",
+      "required": ["x", "y", "scale", "rotation", "opacity", "fit", "cornerRadius"],
+      "additionalProperties": true,
+      "properties": {
+        "x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y": { "type": "number", "minimum": 0, "maximum": 1 },
+        "scale": { "type": "number", "exclusiveMinimum": 0 },
+        "rotation": { "type": "number" },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "fit": { "type": "string", "enum": ["contain", "cover", "fill"] },
+        "cornerRadius": { "type": "number", "minimum": 0 }
+      }
+    },
+    "clipAudioProps": {
+      "type": "object",
+      "required": ["muted", "gain", "fadeInMs", "fadeOutMs"],
+      "additionalProperties": true,
+      "properties": {
+        "muted": { "type": "boolean" },
+        "gain": { "type": "number", "minimum": 0, "maximum": 2 },
+        "fadeInMs": { "type": "number", "minimum": 0 },
+        "fadeOutMs": { "type": "number", "minimum": 0 }
+      }
+    },
+    "clipTextProps": {
+      "type": "object",
+      "required": [
+        "content",
+        "fontFamily",
+        "fontSize",
+        "fontWeight",
+        "fontStyle",
+        "color",
+        "strokeColor",
+        "strokeWidth",
+        "backgroundColor",
+        "lineHeight",
+        "letterSpacing",
+        "align",
+        "verticalAlign"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "content": { "type": "string" },
+        "fontFamily": { "type": "string" },
+        "fontSize": { "type": "number", "exclusiveMinimum": 0 },
+        "fontWeight": { "type": "number", "minimum": 100, "maximum": 900 },
+        "fontStyle": { "type": "string", "enum": ["normal", "italic"] },
+        "color": { "type": "string" },
+        "strokeColor": { "type": "string" },
+        "strokeWidth": { "type": "number", "minimum": 0 },
+        "backgroundColor": { "type": ["string", "null"] },
+        "lineHeight": { "type": "number", "exclusiveMinimum": 0 },
+        "letterSpacing": { "type": "number" },
+        "align": { "type": "string", "enum": ["left", "center", "right"] },
+        "verticalAlign": { "type": "string", "enum": ["top", "middle", "bottom"] }
+      }
+    },
+    "clip": {
+      "type": "object",
+      "required": [
+        "id",
+        "assetId",
+        "startMs",
+        "durationMs",
+        "inMs",
+        "outMs",
+        "speed",
+        "isOverlay",
+        "zIndex",
+        "transform",
+        "audio",
+        "label"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "assetId": { "type": ["string", "null"] },
+        "startMs": { "type": "number", "minimum": 0 },
+        "durationMs": { "type": "number", "minimum": 0 },
+        "inMs": { "type": "number", "minimum": 0 },
+        "outMs": { "type": "number", "minimum": 0 },
+        "speed": { "type": "number", "minimum": 0.1, "maximum": 10 },
+        "isOverlay": { "type": "boolean" },
+        "zIndex": { "type": "number" },
+        "transform": { "$ref": "#/$defs/clipTransform" },
+        "audio": { "$ref": "#/$defs/clipAudioProps" },
+        "text": { "$ref": "#/$defs/clipTextProps" },
+        "label": { "type": ["string", "null"] }
+      }
+    },
+    "track": {
+      "type": "object",
+      "required": ["id", "type", "name", "order", "muted", "hidden", "locked", "height", "clips"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "enum": ["video", "audio", "text"] },
+        "name": { "type": "string" },
+        "order": { "type": "number" },
+        "muted": { "type": "boolean" },
+        "hidden": { "type": "boolean" },
+        "locked": { "type": "boolean" },
+        "height": { "type": "number", "exclusiveMinimum": 0, "maximum": 200 },
+        "clips": { "type": "array", "items": { "$ref": "#/$defs/clip" } }
+      }
+    },
+    "assetLicense": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "source": { "type": "string" },
+        "name": { "type": "string" },
+        "author": { "type": ["string", "null"] },
+        "url": { "type": ["string", "null"] }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "name",
+        "sourceType",
+        "mimeType",
+        "sizeBytes",
+        "blobKey",
+        "proxyBlobKey",
+        "thumbnailBlobKey",
+        "waveform",
+        "durationMs",
+        "width",
+        "height",
+        "frameRate",
+        "hasAudio",
+        "videoCodec",
+        "playable",
+        "license",
+        "importedAt"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "enum": ["video", "audio", "image"] },
+        "name": { "type": "string" },
+        "sourceType": { "type": "string", "enum": ["local", "builtin", "connector"] },
+        "mimeType": { "type": "string" },
+        "sizeBytes": { "type": "number", "minimum": 0 },
+        "blobKey": { "type": ["string", "null"] },
+        "proxyBlobKey": { "type": ["string", "null"] },
+        "thumbnailBlobKey": { "type": ["string", "null"] },
+        "waveform": {
+          "type": ["array", "null"],
+          "items": { "type": "number", "minimum": 0, "maximum": 1 }
+        },
+        "durationMs": { "type": "number", "minimum": 0 },
+        "width": { "type": ["number", "null"] },
+        "height": { "type": ["number", "null"] },
+        "frameRate": { "type": ["number", "null"] },
+        "hasAudio": { "type": "boolean" },
+        "videoCodec": { "type": ["string", "null"] },
+        "playable": { "type": "boolean" },
+        "license": { "$ref": "#/$defs/assetLicense" },
+        "importedAt": { "type": "string" }
+      }
+    },
+    "subtitleCue": {
+      "type": "object",
+      "required": ["id", "startMs", "endMs", "text"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "startMs": { "type": "number", "minimum": 0 },
+        "endMs": { "type": "number", "minimum": 0 },
+        "text": { "type": "string" }
+      }
+    },
+    "subtitleStyle": {
+      "type": "object",
+      "required": [
+        "fontFamily",
+        "fontSize",
+        "color",
+        "strokeColor",
+        "strokeWidth",
+        "align",
+        "bottomOffsetPx"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "fontFamily": { "type": "string" },
+        "fontSize": { "type": "number", "exclusiveMinimum": 0 },
+        "color": { "type": "string" },
+        "strokeColor": { "type": "string" },
+        "strokeWidth": { "type": "number", "minimum": 0 },
+        "align": { "type": "string", "enum": ["left", "center", "right"] },
+        "bottomOffsetPx": { "type": "number", "minimum": 0 }
+      }
+    },
+    "subtitleDoc": {
+      "type": "object",
+      "required": ["enabled", "style", "cues"],
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "style": { "$ref": "#/$defs/subtitleStyle" },
+        "cues": { "type": "array", "items": { "$ref": "#/$defs/subtitleCue" } }
+      }
+    },
+    "projectMeta": {
+      "type": "object",
+      "required": ["durationMs", "lastExport"],
+      "additionalProperties": true,
+      "properties": {
+        "durationMs": { "type": "number", "minimum": 0 },
+        "lastExport": {
+          "type": ["object", "null"],
+          "additionalProperties": true,
+          "required": ["at", "format", "width", "height", "fps", "sizeBytes", "blobKey"],
+          "properties": {
+            "at": { "type": "string" },
+            "format": { "type": "string", "enum": ["mp4", "webm"] },
+            "width": { "type": "number" },
+            "height": { "type": "number" },
+            "fps": { "type": "number" },
+            "sizeBytes": { "type": "number" },
+            "blobKey": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

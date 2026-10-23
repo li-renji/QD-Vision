@@ -1,0 +1,9 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/shared-types" },
+    { "path": "./packages/ai-provider-sdk" },
+    { "path": "./packages/mcp-server" },
+    { "path": "./packages/app" }
+  ]
+}

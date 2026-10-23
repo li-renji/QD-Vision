@@ -1,0 +1,44 @@
+%% ClipCut Web · 时序图 1/5：素材导入
+%% 对应 docs/ARCHITECTURE.md §7.1
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant MP as MediaPanel
+    participant AS as assetService
+    participant PB as PlatformBridge
+    participant BR as blobRepo(IndexedDB)
+    participant PR as metadataProbe
+    participant TS as thumbnailService
+    participant WS as waveformService
+    participant PS as projectStore
+    participant HX as historyStore
+
+    U->>MP: 拖入 / 选择 3 个文件
+    MP->>AS: importFiles(File[])
+    AS->>PB: capability()
+    PB-->>AS: { webCodecs, fileSystemAccess, ... }
+    loop 每个文件
+        AS->>PR: probe(file)
+        alt 视频
+            PR->>PR: HTMLVideoElement 读取 duration/width/height
+        else 音频
+            PR->>PR: decodeAudioData → duration/hasAudio
+        else 图片
+            PR->>PR: Image 解码 → width/height
+        end
+        PR-->>AS: AssetMeta（失败则 duration=0 且 playable=false）
+        opt 视频
+            AS->>TS: captureFrameAt(file, 1000ms)
+            TS-->>AS: thumbnail Blob
+        end
+        opt 音频
+            AS->>WS: computePeaks(file, 400)
+            WS-->>AS: number[400]（0~1 归一化）
+        end
+        AS->>BR: putBlob(blobKey, file)
+        BR-->>AS: ok
+        AS->>PS: addAsset(asset)
+        PS->>HX: push(inversePatches)
+    end
+    AS-->>MP: { imported: 2, failed: 1, reason }
+    MP-->>U: Toast「导入 2 个，1 个格式不支持」

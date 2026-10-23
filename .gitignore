@@ -1,0 +1,32 @@
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+.turbo/
+*.tsbuildinfo
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# 本地环境
+.env
+.env.local
+.env.*.local
+
+# 编辑器
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# Vite 加载 TS 配置时生成的临时编译产物（测试进程被中断时会残留）
+*.timestamp-*.mjs
+
+# Vitest JSON 报告（测试产物）
+test-results.json
+packages/*/test-results.json

@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: lint / typecheck / test / build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build (static output)
+        run: pnpm build
+
+      - name: Schema check (fixtures ↔ JSON Schema)
+        run: pnpm schema:check
+
+      - name: Verify the build output is a pure static site
+        run: |
+          set -euo pipefail
+          DIST="packages/app/dist"
+          test -f "$DIST/index.html"
+          # 静态产物不允许包含服务端入口
+          ! find "$DIST" -name '*.server.js' -print -quit | grep -q .
+          # 产物中不得出现指向外部域名的 fetch 调用（除白名单外）
+          if grep -rEn "fetch\(['\"]https?://" "$DIST/assets" --include='*.js' | grep -v 'pixabay\|freesound\|localhost'; then
+            echo "::error::Static output contains an external fetch() call, which violates the zero-upload constraint."
+            exit 1
+          fi
+          echo "Static output check passed."
+
+      - name: Assert ai-provider-sdk has no vendor SDK dependency
+        run: |
+          set -euo pipefail
+          if grep -rEn '"(openai|@anthropic-ai/[^"]+|@google/generative-ai|azure|@aws-sdk/[^"]+)"' \
+            packages/ai-provider-sdk/package.json; then
+            echo "::error::packages/ai-provider-sdk must not depend on any vendor AI SDK."
+            exit 1
+          fi
+          echo "ai-provider-sdk dependency check passed."
+
+  e2e:
+    name: Playwright smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Run smoke test
+        run: pnpm exec playwright test packages/app/e2e/smoke.spec.ts

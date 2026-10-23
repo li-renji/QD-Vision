@@ -1,0 +1,31 @@
+{
+  "name": "@clipcut/ai-provider-sdk",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ClipCut Web AI Provider 抽象与路由（零厂商 SDK 依赖）",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --root ."
+  },
+  "dependencies": {
+    "@clipcut/shared-types": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
