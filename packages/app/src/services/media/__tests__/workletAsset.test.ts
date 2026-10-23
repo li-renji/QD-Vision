@@ -42,6 +42,21 @@ function locateWorklet(): string {
 /** worklet 运行时文件的绝对路径。 */
 const WORKLET_PATH = locateWorklet();
 
+/**
+ * 已被删除的 TS 副本的路径（`public/` 之外的 `src/services/media/worklets/`）。
+ * 仅用于断言它**不再存在**。
+ */
+const legacyTsPath = path.join(
+  path.dirname(WORKLET_PATH), // .../packages/app/public/worklets
+  '..',
+  '..',
+  'src',
+  'services',
+  'media',
+  'worklets',
+  'pitchPreserveStretchProcessor.ts',
+);
+
 describe('变速保音高 worklet 运行时文件', () => {
   it('public/worklets/pitchPreserveStretchProcessor.js 确实存在', () => {
     expect(() => readFileSync(WORKLET_PATH, 'utf-8')).not.toThrow();
@@ -75,5 +90,17 @@ describe('变速保音高 worklet 运行时文件', () => {
 
     expect(source).not.toMatch(/\bwindow\./);
     expect(source).not.toMatch(/\bdocument\./);
+  });
+
+  /**
+   * 守住「**只有一份实现**」。
+   *
+   * 历史上 `src/services/media/worklets/pitchPreserveStretchProcessor.ts` 是
+   * 零引用的死代码（TS 源码根本不可能被 `addModule` 加载），与运行时 JS
+   * 形成两份必然漂移的算法实现 —— 修worklet 时一度不知道该改哪份。
+   * 已删除，并在这里立此守门，防止它被重新加回来。
+   */
+  it('不存在 src 下的 TS 副本（避免两份实现漂移）', () => {
+    expect(existsSync(legacyTsPath)).toBe(false);
   });
 });
