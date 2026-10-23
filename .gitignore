@@ -30,6 +30,14 @@ Thumbs.db
 # Vite 加载 TS 配置时生成的临时编译产物（测试进程被中断时会残留）
 *.timestamp-*.mjs
 
+# 点号开头的临时排查脚本（跑完即删，不应进仓库）
+# 约定：点号开头 = 临时文件；产品脚本一律不以点号开头。
+.*.mjs
+
+# 一次性 e2e 排查 spec / config（`_` 开头，同样是跑完即删）
+packages/app/e2e/_*.spec.ts
+packages/app/e2e/_*.config.ts
+
 # Vitest JSON 报告（测试产物）
 test-results.json
 packages/*/test-results.json

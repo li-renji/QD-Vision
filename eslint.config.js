@@ -89,6 +89,20 @@ export default tseslint.config(
       '**/*.config.mjs',
       // Vite 加载 TS 配置时生成的临时编译产物（测试进程被中断时会残留）
       '**/*.timestamp-*.mjs',
+      // 点号开头的临时脚本（.probe*.mjs / .verify*.mjs / .tc*.mjs …）。
+      // 它们是开发者**跑完即删**的一次性排查脚本，却会被 `eslint .` 扫到，
+      // 因在浏览器上下文里直接用 console / document 而触发 `no-undef`，
+      // 反复把 `pnpm lint` 门禁弄红（实测已连续三轮）。
+      // 约定：点号开头 = 临时文件，统一忽略；产品脚本一律不以点号开头
+      // （如 `scripts/verify-test-count.mjs` 仍正常受检）。
+      '**/.*.mjs',
+      // 同理：`_` / `.` 开头的**一次性 e2e 排查 spec**。
+      // 它们常自带独立配置（如 `_chk.config.ts` 指向自己的端口），
+      // 跑起来时甚至可能是**写到一半**的文件（解析错误）→ lint 直接红。
+      // 注意只忽略 `.spec.ts`（Playwright 侧），**不碰 `.test.ts`** ——
+      // Vitest 的 include 是 `/\.test\.(ts|tsx)$/`，那些是真测试，必须受检。
+      '**/_*.spec.ts',
+      '**/.*.spec.ts',
     ],
   },
 
