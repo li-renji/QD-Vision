@@ -1,10 +1,14 @@
 /**
  * 导入 `.clipcut.json`：校验 `schemaVersion`、高版本拒绝提示、离线缺失报告。
+ *
+ * ⚠️ 本组件是 FR-063⑦ 的**唯一告警展示点** —— 领域层只产出数据，
+ * 「要不要告知用户」由这里决定。
  */
 
 import { useState } from 'react';
+import type { ProjectDoc } from '@clipcut/shared-types';
 import { useTranslation } from '../../i18n/index.js';
-import { deserialize } from '../../domain/project/deserialize.js';
+import { deserialize, type DeserializeWarning } from '../../domain/project/deserialize.js';
 import { UnsupportedSchemaVersionError } from '../../domain/project/migrate.js';
 import { getMissingBlobKeys } from '../../services/storage/blobRepo.js';
 import { getPlatformBridge } from '../../platform/index.js';
@@ -13,6 +17,7 @@ import { saveProject } from '../../services/storage/projectRepo.js';
 import { Dialog } from '../common/Dialog.js';
 import { Button } from '../common/Button.js';
 import { toast } from '../common/Toast.js';
+import { countPresentableWarnings } from './importWarning.js';
 
 /** ImportProjectDialog 属性。 */
 export interface ImportProjectDialogProps {
@@ -54,9 +59,12 @@ export function ImportProjectDialog({
           return;
         }
 
-        let doc;
+        let doc: ProjectDoc;
+        let warnings: DeserializeWarning[];
         try {
-          doc = deserialize(json);
+          const result = deserialize(json);
+          doc = result.doc;
+          warnings = result.warnings;
         } catch (deserializeError) {
           if (deserializeError instanceof UnsupportedSchemaVersionError) {
             setError(
@@ -82,6 +90,15 @@ export function ImportProjectDialog({
 
         await saveProject(doc);
         useProjectStore.getState().setDoc(doc, { markDirty: false });
+
+        // FR-063⑦：告警 toast **先发**（它解释的是「工程内容被改过」），
+        // 随后是既有的 missingAssets / ok 分支。
+        // ⚠️ 过滤规则是**强制**的：只呈现 `duration-recomputed`，
+        // `value-clamped` 只记录不呈现 —— 否则导入一个正常工程就会看到一堆警告。
+        const recomputedCount = countPresentableWarnings(warnings);
+        if (recomputedCount > 0) {
+          toast(t('project.import.dataAdjusted', { count: recomputedCount }), 'warning');
+        }
 
         if (missing.length > 0) {
           toast(t('project.import.missingAssets', { count: missing.length }), 'warning');

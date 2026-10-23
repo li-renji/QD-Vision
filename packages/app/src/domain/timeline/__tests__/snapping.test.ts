@@ -14,7 +14,7 @@ import {
 
 describe('domain/timeline/snapping', () => {
   it('收集播放头、clip 首尾作为候选点', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const candidates = collectSnapCandidates(doc, [], 2500);
 
     expect(candidates.some((c) => c.kind === 'playhead' && c.ms === 2500)).toBe(true);
@@ -23,7 +23,7 @@ describe('domain/timeline/snapping', () => {
   });
 
   it('排除正在拖拽的 clip 自身的首尾', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const candidates = collectSnapCandidates(doc, ['clip_full_c1'], 0);
     expect(candidates.some((c) => c.clipId === 'clip_full_c1')).toBe(false);
   });

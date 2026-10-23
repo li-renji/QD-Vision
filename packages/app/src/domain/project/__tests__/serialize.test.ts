@@ -12,8 +12,8 @@ import { FIXTURE_NAMES, readFixtureJson, readFixtureText } from '../../../test/f
 describe('domain/project/serialize', () => {
   it('保存 → 加载 → 再保存逐字节一致', () => {
     for (const name of FIXTURE_NAMES) {
-      const first = serialize(deserialize(readFixtureJson(name)));
-      const second = serialize(deserialize(JSON.parse(first) as unknown));
+      const first = serialize(deserialize(readFixtureJson(name)).doc);
+      const second = serialize(deserialize(JSON.parse(first) as unknown).doc);
       expect(second, `夹具 ${name} 往返不一致`).toBe(first);
     }
   });
@@ -36,7 +36,7 @@ describe('domain/project/serialize', () => {
     for (const name of FIXTURE_NAMES) {
       const text = readFixtureText(name);
       const parsed = JSON.parse(text) as Record<string, unknown>;
-      const doc = deserialize(parsed);
+      const { doc } = deserialize(parsed);
       const output = serializeToObject(doc);
 
       const outputKeys = Object.keys(output);
@@ -48,7 +48,7 @@ describe('domain/project/serialize', () => {
   });
 
   it('时间字段统一为毫秒整数', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     for (const track of doc.tracks) {
       for (const clip of track.clips) {
         expect(Number.isInteger(clip.startMs)).toBe(true);
@@ -64,13 +64,13 @@ describe('domain/project/serialize', () => {
   });
 
   it('派生量 meta.durationMs 始终为重算后的值', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     expect(doc.meta.durationMs).toBe(30_000);
     expect(serializeToObject(doc)['meta']).toMatchObject({ durationMs: 30_000 });
   });
 
   it('序列化结果的键序稳定', () => {
-    const doc = deserialize(readFixtureJson('minimal.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('minimal.clipcut.json'));
     const keys = Object.keys(serializeToObject(doc));
     expect(keys).toEqual([
       'schemaVersion',

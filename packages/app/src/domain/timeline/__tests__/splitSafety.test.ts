@@ -77,7 +77,7 @@ describe('FR-018③ · 分割危险区判定', () => {
   });
 
   it('evaluateSplitAtTime 自动定位命中 clip；无命中返回 null', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const inside = evaluateSplitAtTime(doc, 5000, frameMs, minMs);
     expect(inside).not.toBeNull();
 
@@ -88,7 +88,7 @@ describe('FR-018③ · 分割危险区判定', () => {
 
 describe('FR-018③ · 结构化拒绝错误', () => {
   it('分割失败时携带 left / right / min / frame', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const context = { doc, assets: doc.assets };
 
     try {
@@ -107,7 +107,7 @@ describe('FR-018③ · 结构化拒绝错误', () => {
   });
 
   it('距边缘不足 1 帧时 reason 为 frame-too-close', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const context = { doc, assets: doc.assets };
 
     try {
@@ -120,7 +120,7 @@ describe('FR-018③ · 结构化拒绝错误', () => {
   });
 
   it('错误信息本身仍可读（不依赖 i18n 也能定位问题）', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const context = { doc, assets: doc.assets };
     try {
       splitClip(context, 'clip_full_c1', 50);

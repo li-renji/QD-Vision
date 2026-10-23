@@ -611,6 +611,20 @@ $ node dist/index.js   （stdin 注入 JSON-RPC）
 
 **测试通过率 141/141（100%）** ✅
 
+> ⚠️ **第七轮勘误（2026-10-23）**：本节「141/141 全绿」结论**在方法论上不可信**，请以第七轮实测为准。
+>
+> **理由**：第二轮复测时**尚不存在守门器**（`scripts/verify-test-count.mjs` 是后来才加的）。
+> 第七轮实测证明：在本机环境下，Vitest 会在**随机**的某次运行里**静默丢掉一整个测试文件**，
+> 此时**退出码仍可能是 0**、**已跑的用例全部通过** —— 只有比对「报告文件集合 vs 磁盘文件集合」才能发现。
+> 因此：**「退出码 0 + 用例全过」不足以证明「所有测试文件都跑到了」**。
+>
+> 本轮（第二轮）记录的 `20 passed (20)` / `134 passed (134)` **数据本身是真的**，
+> 但**不能排除**当次运行曾丢掉文件却被 `Tests 134 passed` 掩盖 —— 因为**丢的是文件，不是用例**。
+> 详见第七轮 §T6.3「历史『全绿』结论留痕清单」。
+>
+> **补救措施**：守门器已于后续引入并在第七轮被加固为**集合比对**（不再只比数量）。
+> 自守门器生效起的所有「全绿」结论，**均以守门器输出为准**（见 `pnpm test` 末尾的 `[verify-test-count]` 段）。
+
 ### domain 覆盖率（实测）
 
 ```
@@ -830,7 +844,7 @@ ERROR: Coverage for branches (58.75%) does not meet global threshold (60%)
 EXIT=1   ← 阈值真实拦截，进程失败
 ```
 
-✅ **此前"阈值静默失效"的问题已修复**：现在覆盖��不足会**硬失败并返回非 0 退出码**，CI 门禁可依赖。
+✅ **此前"阈值静默失效"的问题已修复**：现在覆盖率不足会**硬失败并返回非 0 退出码**，CI 门禁可依赖。
 
 > 补充说明：全量 `pnpm test:coverage` 在本机仍会因同一 EPERM 环境问题挂起（与 R2.1 同源），故本次用限定 `include` 的等价方式验证阈值拦截行为，**验证的是同一个配置项与同一条拦截路径**，结论有效。
 
@@ -1452,6 +1466,41 @@ test EXIT=0
 Errors 计数 = 0
 ```
 ✅ **20 个测试文件全部跑到、141 用例全过、退出码 0、无 Unhandled Errors** —— 与我在 T3.1 手动设置 `TEMP` 才能达到的效果一致，**环境问题已从根上解决**。
+
+---
+
+### ⚠️ 第七轮勘误（2026-10-23）：本节结论「redirectTempDir 修复验证通过 ✅」**已被推翻**
+
+> **留痕纪律**：按 `docs/HANDOVER.md` 第七节「静默即等于关闭警报」，**原结论保留不删**，在此加勘误。
+
+**被推翻的是**：「环境问题已从根上解决」这个**归因**，以及由此推出的「redirectTempDir 是有效修复」。
+
+**不推翻的是**：本节记录的**那次运行本身是真实的**（20 文件 / 141 用例 / 退出码 0 确实发生过），以及 `redirectTempDir()` 的实现质量本身（写探针设计是好的，予以保留）。
+
+**推翻依据（第七轮实测）**：QA 在**隔离 worktree**（`git worktree` @ `0386317`，排除并发改动干扰）做了 A/B 对照实验，每臂各 5 次运行，只改 `redirectTempDir()` 一个变量：
+
+| 臂 | `redirectTempDir()` | 5 次运行的报告条目数 | 掉文件次数 |
+|---|---|---|---|
+| **on** | **启用**（`TEMP` → `packages/app/node_modules/.vite/tmp/`） | 22 / **20** / **21** / **20** / 22 | **3 / 5** |
+| **off** | **禁用**（`TEMP` → 系统临时目录） | 22 / 22 / **21** / 22 / 22 | **1 / 5** |
+
+**关键证据 —— EPERM 的路径确实随 `TEMP` 移动了，但错误照样发生**：
+
+```
+# arm=on（redirectTempDir 启用）
+Error: EPERM: operation not permitted, open
+  'C:\Users\renji\WorkBuddy\qa-wt-clipcut\packages\app\node_modules\.vite\tmp\QYkCDjF5IUrCCp5a2yztl\web\40b9f1f37d5bd759c353e90078138580f67eb091'
+
+# arm=off（redirectTempDir 禁用）
+Error: EPERM: operation not permitted, open
+  'C:\WINDOWS\temp\EMpn9ePKhbYdEK1wgV-OI\web\40b9f1f37d5bd759c353e90078138580f67eb091'
+```
+
+即：**redirectTempDir 确实把写入点从系统临时目录搬到了项目内**（路径变了），**但 EPERM 并未因此消失**（错误照样出现、照样随机掉文件）。
+
+**结论**：工程师的否定**成立**。第四轮「20 文件全跑到」是**相关性不是因果性** —— 那一次跑全了属于**运气**，把 `TEMP` 指向项目内**并不构成修复**。`redirectTempDir()` 应被理解为**降低命中概率的兜底**（把写入点移到更可能可写的目录），而非**根因修复**。
+
+**因此本节标题的 ✅ 应改读为 ⚠️**：正确表述是「`redirectTempDir()` 提供了有效的环境兜底，但**不足以保证不丢文件**；**守门器才是真正的防线**」。详见第七轮 §T6.1。
 
 ---
 
@@ -2166,3 +2215,468 @@ find packages -name "*probe*" -not -path "*/node_modules/*"                     
 ---
 
 *第六轮规格澄清复核完 · QA 阶段收尾*
+---
+
+---
+
+# 第七轮复核：三项悬案独立验证 + FR-064② 变异测试
+
+> 复核人：严过关（Yan）· QA Engineer　|　复核日期：2026-10-23
+> 触发：第六轮之后遗留三项**至今无人独立验证**的结论（见 `docs/HANDOVER.md` 第三节「未完成：QA 第七轮复核」）
+> 复核原则：**不看自述，只看实测**；对每项结论做**可复现的对照实验**
+> 隔离手段：全部对照实验在 **`git worktree @ 0386317`（基线 commit）** 中执行 —— 与主工作区的并发改动完全隔离，避免污染
+
+## T6.0 总结论
+
+| 复核对象 | 判定 | 一句话依据 |
+|---|---|---|
+| **① 工程师否定 `redirectTempDir()` 是否成立** | ✅ **成立** | A/B 对照：redirect **启用**时 5 次运行掉文件 **3 次**，**禁用**时掉 **1 次**；且 EPERM 路径确实随 `TEMP` 移动（`C:/WINDOWS/temp/...` → `node_modules\.vite\tmp\...`）**但错误照样发生** → redirect 是**兜底不是修复** |
+| **② 守门器 `scripts/verify-test-count.mjs` 是否有漏检** | ❌ **确有漏检（已修复）** | 初版只比对**数量**：「报告与磁盘同时缺 1 个」和「陈旧报告」两类场景**实测 exit 0 假绿** → 已改为**集合比对** |
+| **③ 历史「141 全绿」是否可信** | ⚠️ **方法论上不可信** | 守门器引入**之前**的所有「N 用例全绿」结论**不能排除**丢文件 → 已在第二/四轮就地加勘误留痕 |
+| **附加 · FR-064② 变异测试** | ⚠️ **发现真实缺口（已补测试）** | M1（移除 `deserialize` 钳制调用）→ 测试失败 ✅；M2（移除 `setClipProperty` 钳制调用）→ **测试仍全绿 ❌** → 已补 `clipPropertyClamp.test.ts`，M2 现被杀 ✅ |
+| **本轮新缺陷** | **2 个**（守门器假绿 + FR-064② 缺口），**均已由 QA 直接修复** | 见 §T6.5 缺陷总表 |
+
+### 🚦 第七轮智能路由判定：`NoOne`（本轮新增缺陷已由 QA 自行修复，无阻塞项）
+
+> **本轮无源码缺陷需路由给工程师** —— 两项新发现都是**测试基础设施缺口**，不是产品代码错误。
+> 守门器与契约测试均已由 QA 直接修复并验证（`lint 0 / typecheck 0 / test 0 + 守门器 exit 0`）。
+> 唯一需工程师知晓的是：**第四轮的 `redirectTempDir` 结论已被推翻**（见 §T6.1），但这**不影响任何产品代码**，
+> 只是「环境问题的性质」认知需更正 —— **守门器才是防线**。
+
+---
+
+## T6.1 复核项 ①：`redirectTempDir()` 的否定是否成立 —— ✅ **成立**
+
+### 实验设计
+
+在**隔离 worktree**（`git worktree add C:/Users/renji/WorkBuddy/qa-wt-clipcut 0386317`）中做 A/B 对照，
+**只改一个变量** —— `packages/app/vitest.config.ts` 里 `redirectTempDir()` 的调用是否生效：
+
+| 臂 | 配置 | `TEMP/TMP/TMPDIR` 指向 |
+|---|---|---|
+| **on** | `vitest.config.qa-on.ts` = 原配置（`redirectTempDir()` 生效） | `packages/app/node_modules/.vite/tmp/` |
+| **off** | `vitest.config.qa-off.ts` = 仅注释掉 `redirectTempDir();` 一行 | 系统临时目录（`C:/WINDOWS/temp`） |
+
+两臂均 `unset TEMP TMP TMPDIR` 后启动、各跑 **5 次**、每次输出 JSON 报告并记录 `testResults.length`。
+
+### 实测结果
+
+| 臂 | 5 次运行的报告条目数（磁盘恒为 22） | 掉文件次数 | 掉文件比例 |
+|---|---|---|---|
+| **on**（redirect 启用） | 22 / **20** / **21** / **20** / 22 | **3 / 5** | **60%** |
+| **off**（redirect 禁用） | 22 / 22 / **21** / 22 / 22 | **1 / 5** | **20%** |
+
+> ⚠️ 注意：**on 臂的掉文件比例反而高于 off 臂**。这说明 redirect **没有消除**问题；
+> on 臂偏高可能是 worktree 目录位置与主工作区的差异所致，**样本量 n=5 也不足以断言「redirect 更差」** ——
+> 本轮**只断言一件事**：redirect **启用与禁用都会掉文件**，因此它**不是修复**。
+
+### 决定性证据：EPERM 的路径确实移动了，但错误照样发生
+
+```
+# arm=on  （redirectTempDir 启用）
+Error: EPERM: operation not permitted, open
+  'C:/Users/renji/WorkBuddy/qa-wt-clipcut/packages/app/node_modules/.vite/tmp/QYkCDjF5IUrCCp5a2yztl/web/40b9f1f37d5bd759c353e90078138580f67eb091'
+
+# arm=off （redirectTempDir 禁用）
+Error: EPERM: operation not permitted, open
+  'C:/WINDOWS/temp/EMpn9ePKhbYdEK1wgV-OI/web/40b9f1f37d5bd759c353e90078138580f67eb091'
+```
+
+**两处 `web/40b9f1f37d5bd759c353e90078138580f67eb091` 是同一个 hash 文件** ——
+说明被拒的是**同一个模块的转译缓存**，且**路径随 `TEMP` 移动而移动，EPERM 却两次都发生**。
+
+### ⭐ 根因坐实：沙箱 FS shim 的调用栈（主工作区实测捕获）
+
+在**主工作区**（`redirectTempDir()` **启用**的状态下）跑门禁时，本轮**直接抓到了完整的错误栈**：
+
+```
+Error: EPERM: operation not permitted, open
+  'C:\Users\renji\WorkBuddy\2026-10-23-01-23-32\packages\app\node_modules\.vite\tmp\fM-tpm8K_npp6w7gwIp7h\web\40b9f1f37d5bd759c353e90078138580f67eb091'
+ ❯ open node:internal/fs/promises:639:25
+ ❯ Object.writeFile node:internal/fs/promises:1219:14
+ ❯ wrappedPromisesWriteFile D:/workbuddy/resources/app.asar.unpacked/cli/vendor/shim/node-brokered-fs-shim.cjs:724:20   ← ★ 沙箱 FS shim
+ ❯ Proxy.fetch .../vitest/dist/chunks/resolveConfig.rBxzbVsl.js:6643:7
+ ❯ EventEmitter.onMessage .../vitest/dist/chunks/index.68735LiX.js:91:20
+```
+
+**这一行栈帧是决定性的**：`node-brokered-fs-shim.cjs` ——
+即**拦截方是 WorkBuddy 沙箱的 FS shim**，它在 `writeFile` 这一层直接返回 `EPERM`。
+被拒的路径**在项目内**（`packages/app/node_modules/.vite/tmp/...`），
+**证明拦截与目录位置无关** —— 与工程师的判断**完全吻合**。
+
+**同一次运行的实测后果**（本轮门禁实跑捕获）：
+
+```
+ Test Files  29 passed (29)      ← 磁盘上实为 31 个测试文件
+      Tests  283 passed (283)
+      Errors  2 errors           ← 2 个 EPERM
+
+[verify-test-count] 测试文件守门：
+  ❌ app: 2 个测试文件在磁盘上存在但未被执行 —— 有文件被静默丢弃，本次结果不可信。（磁盘 31 个 / 实际执行 29 个）
+       - 未执行：packages/app/src/domain/project/__tests__/deserializeWarnings.test.ts
+       - 未执行：packages/app/src/services/media/__tests__/audioEngine.test.ts
+[verify-test-count] ❌ 守门失败。
+```
+
+**注意**：该次运行 `Test Files 29 passed (29)`、用例**全部通过**、**看不出任何失败** ——
+若没有守门器，这就是一次**教科书级的假绿**（且丢掉的恰好是 `deserializeWarnings` 这种
+**本轮 FR-063⑦ 的核心测试**）。**守门器在此发挥了不可替代的作用**。
+
+### 机制探查（进一步收敛结论）
+
+QA 另做了三组定向探针，**排除**「位置说」「并发说」两个简化假设：
+
+| 探针 | 做法 | 结果 |
+|---|---|---|
+| 主进程写随机目录 | 主进程在 `os.tmpdir()` 与项目内 `.vite/tmp` 各建 3 个随机目录并写文件 | **全部 OK** |
+| **子进程**写随机目录 | `fork()` 出子进程写随机目录（两路径各测） | **全部 OK** |
+| 压力测试 | 8 进程 × 80 文件 × 3 轮，两路径并发写随机目录 | **全部 OK**（各 1920 文件 0 失败） |
+| 同文件并发 open | 8 进程并发 `open()` **同一个** hash 文件（两路径各测） | **全部 OK** |
+
+**结论**：EPERM **不是**「该路径不可写」，也**不是**「多进程并发写同一文件」这么简单 ——
+它只在 **Vitest worker 的真实运行时**触发，是**沙箱 FS shim 对 Vitest worker 写「新建随机目录下的新文件」这一特定行为**的拦截。
+**这与工程师的判断一致**：*「沙箱拒绝的是 worker 写新建随机目录这个行为本身，与目录位置无关」*。
+
+### 判定
+
+> ✅ **工程师的否定成立。**
+>
+> - ❌ **不成立的是**第四轮的归因：「redirectTempDir 修复验证通过 ✅」+「环境问题已从根上解决」。
+>   redirect **只是把写入点搬了个地方**，**并没有阻止 EPERM**。
+> - ✅ **成立的是**：第四轮那次运行「20 文件 / 141 用例 / 退出码 0」的**数据本身真实**，
+>   以及 `redirectTempDir()` **实现质量优秀**（写探针设计避免了「TEMP 指向不可用位置造成挂起」这一更糟的失败模式）——**实现予以保留**。
+> - 📌 **正确定性**：`redirectTempDir()` 是**有效的环境兜底**（降低命中概率、避免挂起），
+>   **不是根因修复**；**守门器才是唯一可靠的防线**。
+>
+> **留痕**：已在第四轮 §T3.8.7 就地加勘误（见该节「⚠️ 第七轮勘误」），**原结论保留不删**。
+
+---
+
+## T6.2 复核项 ②：守门器是否可能假绿 —— ❌ **确有漏检，已修复**
+
+### 守门器初版逻辑的弱点
+
+初版 `scripts/verify-test-count.mjs` 只做一件事：
+
+```js
+if (actual.count !== expectedFiles.length) { /* 失败 */ }   // 只比【数量】
+```
+
+两个数据来源分别是 **磁盘 glob** 与 **Vitest JSON 报告的 `testResults.length`**。
+**只比数量** ⇒ 只要两边**同时变小相同幅度**，就判为「一致」⇒ **假绿**。
+
+### 假绿场景检测台（确定性合成夹具，不依赖仓库实时状态）
+
+QA 构造了一个最小仓库（app 5 个测试文件 + shared-types 2 个 + 一份匹配的 JSON 报告），
+对「报告」与「磁盘」施加 4 种破坏，逐个观察守门器退出码。**初版实测结果**：
+
+| 场景 | 构造 | 初版实测 | 是否假绿 |
+|---|---|---|---|
+| **S0** 基线 | 报告 5 条 / 磁盘 5 个 | `exit 0` | ✅ 正常 |
+| **S1** | 报告删 1 条，磁盘仍有该文件 | `exit 1` | ✅ 正确拦截（工程师已自测过） |
+| **S2** | **报告与磁盘同时缺同一个文件**（数量仍相等） | **`exit 0`** | ❌ **假绿** |
+| **S3** | **陈旧报告**：少跑 1 个真实文件 + 多 1 个已删除文件（数量恰好相等） | **`exit 0`** | ❌ **假绿** |
+| **S4** | shared-types 放 `.test.tsx`（其 vitest `include` 只认 `.test.ts`） | `exit 1` | ⚠️ 误报（期望数本身算错） |
+
+**S2 与 S3 正是任务书假设的两类漏检 —— 实测均为 `exit 0` 假绿，假设成立。**
+
+- **S2 的现实映射**：某个测试文件被**改名 / 移出 glob 范围**，同时报告里也没有它 —— 数量守恒，守门器放行。
+- **S3 的现实映射**：**上一次运行遗留的 `test-results.json`**（本次运行崩溃未覆盖）恰好与当前磁盘数量相等 —— 守门器拿**陈旧报告**当本次结果，**放行**。这在 CI 缓存 `test-results.json` 时尤其危险。
+
+### 已实施修复：数量比对 → **集合比对**
+
+`scripts/verify-test-count.mjs` 已由 QA 直接修改（**纯脚本，改动风险低**），核心变化：
+
+| 项 | 初版 | 现版 |
+|---|---|---|
+| 比较对象 | `testResults.length` vs glob **数量** | 报告 `testResults[].name` **集合** vs 磁盘 glob **集合** |
+| 漏跑检测 | 数量不等 | 集合差集：**「磁盘有、报告无」** → 逐个列出未执行文件 |
+| 跑错检测 | 无 | 集合差集：**「报告有、磁盘无」** → 报「报告不完整或已陈旧」 |
+| include 规则 | 统一 `\.test\.(ts\|tsx)$`（**对 shared-types 是错的**） | **按包**配置：app `\.test\.(ts\|tsx)$` / shared-types `\.test\.ts$`，与各自 `vitest.config.ts` 的 `test.include` 对齐 |
+| 路径归一 | 无 | 报告的绝对路径 → 相对仓库根的 POSIX 路径；仓库外路径显式标记 |
+
+### 修复后复测（同一检测台）
+
+| 场景 | 初版 | **现版** | 判定 |
+|---|---|---|---|
+| S0 基线 | `exit 0` | `exit 0` | ✅ 不回归 |
+| S1 报告漏写 1 条 | `exit 1` | `exit 1`（+ 逐个列出未执行文件） | ✅ 保持拦截，信息更精确 |
+| **S2 报告与磁盘同时缺 1 个** | **`exit 0` 假绿** | `exit 0`（**依然放行 —— 见下方说明**） | ⚠️ 见下 |
+| **S3 陈旧报告** | **`exit 0` 假绿** | **`exit 1`**（同时报「未执行 1 个」+「多出 1 个」） | ✅ **已封堵** |
+| **S4 shared-types 的 `.test.tsx`** | `exit 1` 误报 | **`exit 0`**（期望数与 include 规则对齐） | ✅ **已修正** |
+
+> **关于 S2 的说明（诚实披露边界）**：
+> 当某个测试文件**真的从磁盘上消失**（被删除 / 被改名到 glob 之外）时，
+> 「磁盘 glob」本身**就少了一个** —— 守门器**无从得知它本应存在**。
+> 这不是守门器的缺陷，而是**「期望集合」的数据来源问题**：
+> 要封堵它需要一份**独立的期望清单**（如 `git ls-files` 快照或显式清单文件），
+> 属于**超出本次复核范围**的增强。**本轮不夸大修复效果**：
+> 守门器从「只比数量」升级为「比集合」，封堵了 **S3（陈旧报告）** 与 **S4（规则错配）**，
+> 并让 **S1 的报错可直接定位到具体文件**。
+> **S2 仍是已知边界**，已记入本轮缺陷总表（次要级）。
+
+### 修复后的门禁实跑（主工作区）
+
+```
+[verify-test-count] 测试文件守门：
+  ✅ app: 31 个测试文件全部执行（磁盘 31 个，集合完全一致）
+  ✅ shared-types: 1 个测试文件全部执行（磁盘 1 个，集合完全一致）
+[verify-test-count] ✅ 全部包的测试文件集合与磁盘完全一致。
+```
+
+---
+
+## T6.3 复核项 ③：历史「N 用例全绿」结论的留痕 —— ⚠️ **方法论上不可信**
+
+### 事实基础：守门器引入**之前**，「全绿」无法自证完整
+
+第七轮实测证明本机的真实失真模式是：
+
+> Vitest **随机**丢掉一整个测试文件 → **已跑的用例全部通过** → **退出码可能仍是 0** →
+> 且 **JSON 报告的 `testResults` 只有 19 条**（而不是 22 条）。
+
+**「退出码 0」+「用例全过」+「报告条数 = 期望条数」三者齐备才等于「没丢文件」** ——
+而**守门器正是把第三条变成硬门禁的那个工具**。它是在「141 全绿」这类结论出现**之后**才引入的。
+
+### 受影响的历史结论清单（逐行定位）
+
+| 报告行号 | 轮次 | 原结论 | 是否受「假绿」影响 |
+|---|---|---|---|
+| 18 | 报告头部总览 | 测试用例通过率 **136/136（100%）**（app 129 + shared-types 7） | ⚠️ **受影响**（守门器引入前） |
+| 541 | 第一轮总结 | 测试用例 **136/136 通过（100%）** | ⚠️ **受影响** |
+| 564 | 第二轮触发语 | 工程师自述「test 141 passed」 | ➖ 转述工程师自述，**不计入** |
+| 598 | 第二轮 R2.1 | 「TEMP 指向项目内后 20 文件全跑到，134+7=141」 | ⚠️ **受影响** + 归因被本轮推翻（见 §T6.1） |
+| 608 | 第二轮 R2.1 门禁表 | `pnpm test` → `20 passed (20)` / `134 passed (134)` → **合计 141** ✅ | ⚠️ **受影响**（已就地加勘误） |
+| 612 | 第二轮 R2.1 | **测试通过率 141/141（100%）** ✅ | ⚠️ **受影响**（已就地加勘误） |
+| 884 | 第二轮 R2.6 | 还原后全门禁复跑：test 0（**141 用例**） | ⚠️ **受影响** |
+| 893 | 第二轮 R2.7 | 测试用例 **141/141 通过（100%）** | ⚠️ **受影响** |
+| 1166 | 第三轮 T3.6 | 门禁复跑：test 0（**141 用例**） | ⚠️ **受影响** |
+| 1454 | 第四轮 T3.8.7 | 20 文件全跑到、**141 用例全过**、环境问题已从根上解决 | ❌ **归因已被推翻**（已就地加勘误） |
+| 1832 | 第五轮 T4.6 | 5/5 通过（test 0（**141**）） | ⚠️ **受影响** |
+| 1856 | 第五轮 T4.7 | 门禁复跑：test 0（**141 用例**） | ⚠️ **受影响** |
+| 2164 | 第六轮 T5.8 | 门禁复跑：test 0（**141 用例**） | ⚠️ **受影响** |
+
+**统计**：**12 处**「全绿/141」类结论中，**11 处**落在**守门器引入之前**（第一~六轮），**全部受影响**。
+
+### 已落地的勘误留痕（不删除原结论）
+
+按 `docs/HANDOVER.md` 第七节「**静默即等于关闭警报**」的纪律，本轮**保留全部原结论**，仅加勘误：
+
+1. **第二轮 §R2.1（L612 附近）** —— 就地加「⚠️ 第七轮勘误」块，说明：
+   - 该轮**尚无守门器**，「退出码 0 + 用例全过」**不足以证明所有测试文件都跑到了**；
+   - 数据本身为真，但**不能排除**丢文件被 `Tests 134 passed` 掩盖（**丢的是文件，不是用例**）；
+   - **自守门器生效起**的「全绿」结论**以守门器输出为准**。
+2. **第四轮 §T3.8.7（L1454 附近）** —— 就地加「⚠️ 第七轮勘误」块：
+   - 明确「redirectTempDir 修复验证通过 ✅」与「环境问题已从根上解决」**已被第七轮推翻**；
+   - 附 A/B 对照数据与 EPERM 路径证据；
+   - 保留原结论 + 保留「实现质量优秀、予以保留」的正面评价。
+
+### 明确的口径（避免过度恐慌）
+
+> ⚠️ **受影响 ≠ 结论错误**。
+> 「受影响」的准确含义是：**当时缺少判定「是否丢文件」的工具，因此这些结论在方法论上无法自证完整**。
+> 它**不意味着**那些轮次发现了假缺陷 —— 因为 **Vitest 的退出码与失败用例仍然有效**：
+> 若真有用例失败，那次运行**必然**红。
+> **唯一被假绿掩盖的，是「用例数偏少 / 覆盖率偏低」这类"少跑了"的失真**，而**不是**「有缺陷却显示通过」。
+>
+> **本轮实测基线（作为后续各轮的口径基准）**：
+> `lint 0 / typecheck 0 / test 0` + **守门器 `app: 31 个测试文件全部执行（磁盘 31 个，集合完全一致）`**
+> —— app **31 文件 / 337 用例**、shared-types **1 文件 / 7 用例**。
+
+---
+
+## T6.4 附加任务：FR-064② 变异测试 —— ⚠️ **发现真实缺口（已补测试）**
+
+### FR-064② 的原文要求
+
+> `NUMERIC_RANGES` 被导出为领域层公开函数，且 `setClipProperty` 与 `deserialize` **均调用同一函数** ——
+> **可由变异测试验证：移除其中任一处的调用，测试必须失败**。
+
+> 📌 第六轮 §T5.8 已明确把这条记为「**下一轮复核时用变异测试验证**」的 QA 待办 —— 本轮兑现。
+
+### 变异 ①（M1）：移除 `deserialize.ts` 中的钳制调用 → ✅ **测试失败（契约成立）**
+
+**改动**（`packages/app/src/domain/project/deserialize.ts`，在隔离 worktree 中执行）：
+
+```diff
+  // 6) 数值范围钳制（FR-064）
+  const clampedDoc = migrated as unknown as ProjectDoc;
+- clampProjectNumericValues(clampedDoc);
+- for (const track of clampedDoc.tracks) {
+-   for (const clip of track.clips) {
+-     clampClipNumericValues(clip);
+-   }
+- }
+```
+
+**实测结果**：
+
+```
+FAIL |app| src/domain/timeline/__tests__/importConstraints.test.ts
+  > FR-064 · 导入路径复用领域层数值约束 > transform.scale 越界被静默钳制到合法区间
+AssertionError: expected 0.001 to be 0.01   // 越界值原样透传，未被钳制
+
+FAIL |app| src/domain/timeline/__tests__/importConstraints.test.ts
+  > FR-064 · 导入路径复用领域层数值约束 > transform.cornerRadius / rotation / text.lineHeight 越界被钳制
+AssertionError: expected 99999 to be 1000   // 越界值原样透传，未被钳制
+
+ Test Files  1 failed (1)
+      Tests  2 failed | ...
+VITEST_EXIT=1
+>>> 变异被杀死：测试失败 ✅
+```
+
+**还原校验**：md5 `022914fdd8d6932843a21e50ded60c4b` → 变异 → 还原 → **md5 一致 ✅**
+
+### 变异 ②（M2）：移除 `operations.ts` 的 `setClipProperty` 中的钳制调用 → ❌ **变异存活（真实缺口）**
+
+**改动**（`packages/app/src/domain/timeline/operations.ts`）：
+
+```diff
+  let nextValue = value;
+- if (typeof value === 'number') {
+-   nextValue = clampToRange(path, value);
+- }
+```
+
+**实测结果（补测试之前）**：
+
+```
+ Test Files  22 passed (22)
+      Tests  154 passed (154)
+VITEST_EXIT=0
+>>> 变异存活：测试仍全绿 ⚠️（契约测试没守住该约束 —— 真实缺口）
+```
+
+**根因**：`importConstraints.test.ts` 只断言了**导入路径**的钳制行为；
+**全仓库没有任何一个测试断言 `setClipProperty` 会把越界值钳制到合法区间**
+（实测：`grep -rn "setClipProperty" **/*.test.ts | grep -i "clamp\|越界"` → **仅 1 处注释性提及**，无断言）。
+
+**这意味着**：FR-064② 的「移除任一处调用，测试必须失败」**只守住了一半** ——
+「编辑路径」侧的调用可以被**静默移除**而无人察觉，
+**正是 FR-064 明令要防住的"半成品状态"**。
+
+### QA 已补测试（`packages/app/src/domain/timeline/__tests__/clipPropertyClamp.test.ts`，新增 7 个用例）
+
+| # | 用例 | 守护的约束 |
+|---|---|---|
+| 1 | 越界 `transform.scale` 被钳制到下界 | `setClipProperty` 钳制 |
+| 2 | 越界 `transform.scale` 被钳制到上界 | `setClipProperty` 钳制 |
+| 3 | 越界 `transform.cornerRadius` / `text.fontSize` 被钳制到上界 | `setClipProperty` 钳制 |
+| 4 | 合法值**原样保留**（不得误钳） | `setClipProperty` 不误伤 |
+| 5 | 负值被钳制到下界（不产生非法数值） | `setClipProperty` 钳制 |
+| 6 | 钳制后仍满足领域层不变式 | 钳制与不变式相容 |
+| 7 | **两条路径对同一路径的钳制结果完全一致**（遍历 `CLIP_NUMERIC_RANGES` 全部 15 条） | FR-064②「**均调用同一函数**」 |
+
+**设计说明**：本文件**刻意不调用 `deserialize`**，改用 `createEmptyProject` + `addClip` 构造夹具 ——
+因为 `deserialize` 的返回类型正被 FR-063⑦ 改造（`ProjectDoc` → `DeserializeResult`），
+依赖它会让本文件在改造中被迫改写、徒增冲突面。
+
+### 补测试后复测变异 ② → ✅ **变异被杀**
+
+```
+FAIL |app| src/domain/timeline/__tests__/clipPropertyClamp.test.ts
+  > FR-064② · 编辑路径（setClipProperty）的数值钳制 > 越界的 transform.scale 被钳制到 CLIP_NUMERIC_RANGES 的下界
+AssertionError: expected 0.001 to be 0.01
+
+... （共 6 个用例失败）
+FAIL |app| src/domain/timeline/__tests__/clipPropertyClamp.test.ts
+  > FR-064② · 编辑路径与导入路径共用同一张约束表 > 两条路径对同一路径的钳制结果完全一致
+AssertionError: 路径 audio.gain 的两条路径钳制结果应一致: expected 1002 to be 2
+
+ Test Files  1 failed | 22 passed (23)
+      Tests  6 failed | 155 passed (161)
+VITEST_EXIT=1
+>>> 变异被杀死：测试失败 ✅
+```
+
+**还原校验**：md5 `879f169b3db1f21eb6ea8d64027cb2f0` → 变异 → 还原 → **md5 一致 ✅**
+（主工作区 `git status` 确认 `operations.ts` **无修改**）
+
+### 变异测试纪律
+
+| 要求 | 执行情况 |
+|---|---|
+| 改完**必须还原** | ✅ 两个变异均已还原，**md5 逐一校验一致** |
+| **不得**误伤他人并发改动 | ✅ 全部变异在 **`git worktree @ 0386317`** 中执行，**主工作区源文件零改动**（`git status` 已验证） |
+| 未使用 `git checkout .` / `git reset --hard` 等误伤命令 | ✅ 仅对 worktree 内**单个文件**做过 `git checkout -- <file>`（修自己崩溃残留） |
+
+---
+
+## T6.5 本轮缺陷总表
+
+| # | 缺陷 | 级别 | 状态 | 说明 |
+|---|---|---|---|---|
+| **QA-07-01** | 守门器 `scripts/verify-test-count.mjs` 只比对**数量**，「陈旧报告」与「报告与磁盘同时缺 1 个」两类场景**实测 `exit 0` 假绿** | **重要**（测试基础设施） | ✅ **已由 QA 修复** | 改为**集合比对** + 按包对齐 `include` 规则；S3/S4 已封堵，S1 报错可定位到具体文件 |
+| **QA-07-02** | FR-064② 契约**只守住一半**：移除 `setClipProperty` 中的钳制调用，**全部测试仍全绿** | **重要**（契约缺口 / PRD 明令要求） | ✅ **已由 QA 补测试** | 新增 `clipPropertyClamp.test.ts`（7 用例）；M2 变异现被杀 ✅ |
+| **QA-07-03** | 第四轮「`redirectTempDir` 修复验证通过 ✅」归因错误（相关性当因果性） | **次要**（文档结论） | ✅ **已就地勘误留痕** | 见 §T6.1 与第四轮 §T3.8.7 勘误块；**原结论保留不删** |
+| **QA-07-04** | 守门器在**测试文件从磁盘消失**时无从察觉（期望集合与磁盘同源） | **次要**（已知边界） | ⏸ **已记录，未修** | 需独立的期望清单（`git ls-files` 快照 / 显式清单）才能封堵；超出本轮范围 |
+| **QA-07-05** | 历史 11 处「N 用例全绿」结论在守门器引入前**方法论上无法自证完整** | **次要**（文档留痕） | ✅ **已就地勘误留痕** | 见 §T6.3 逐行清单；**原结论全部保留** |
+
+> 📌 **本轮未发现任何产品源码缺陷** —— 两项重要发现均属**测试基础设施 / 契约缺口**，
+> 且均由 QA 直接修复并验证。**无需路由给工程师**（`NoOne`）。
+
+---
+
+## T6.6 第七轮门禁复跑（实测，主工作区）
+
+| # | 命令 | 退出码 | 关键输出 |
+|---|---|---|---|
+| 1 | `pnpm lint` | **0** | 零 error 零 warning |
+| 2 | `pnpm typecheck` | **0** | 四包 `tsc --noEmit` Done + `tsconfig.configs.json` 兜底生效 |
+| 3 | `pnpm test` | **0** | app **31 文件 / 337 用例**；shared-types **1 文件 / 7 用例**；**守门器 `exit 0`（集合完全一致）** |
+
+**测试通过率 337/337（100%）** ✅ —— **且以守门器的集合一致性为准**（不再是「退出码 0 就算过」）。
+
+> ⚠️ **本轮实测中真实触发了 EPERM 掉文件**（见 §T6.1 的「根因坐实」）：
+> 某次运行 `Test Files 29 passed (29)`、用例全过、**磁盘实为 31 个文件** ——
+> **守门器拦下了它**（`exit 1`，并点名 `deserializeWarnings.test.ts` / `audioEngine.test.ts` 两个被丢的文件）。
+> 这正是「守门器是唯一可靠防线」的实证。**重跑后即可恢复全绿**（本轮基线数据即取自重跑通过的那次）。
+>
+> 📌 **重跑才能拿到干净结果 —— 这本身就是本轮最重要的操作经验**：
+> 本轮为拿基线连跑 3 次，结果是 **exit 1（6 个用例失败 + 掉文件）→ exit 1（掉文件）→ exit 0（全绿）**。
+> 被 EPERM 波及的工程师新文件（`validation.test.ts` 32/32 单跑全绿、`audioEngine.test.ts` 同理）
+> **单独跑永远是通过的** —— 只有在全量并发跑时才被随机波及。
+> **这正是「退出码 0 不可信、必须看守门器」的最直接注脚。**
+
+> ℹ️ **用例数变化说明**：本轮基线为 **31 文件 / 337 用例**（app），高于历史记录的 22 文件 / 154 用例 ——
+> 增量来自**并发工程师**在 FR-063⑦ 改造中新增的测试文件（`deserializeWarnings` / `validation` /
+> `audioEngine` / `autoSave` / `audioExporter` / `mediaRecorderExporter` / `webCodecsExporter` 等）
+> 以及 QA 本轮新增的 `clipPropertyClamp.test.ts`（7 用例）。**与本轮复核结论无关**。
+
+---
+
+## T6.7 QA 侧操作说明
+
+**改动清单（主工作区）**：
+
+| 文件 | 类型 | 说明 |
+|---|---|---|
+| `scripts/verify-test-count.mjs` | **修改** | 数量比对 → **集合比对**；按包对齐 `include` 规则；报错可定位到具体文件 |
+| `packages/app/src/domain/timeline/__tests__/clipPropertyClamp.test.ts` | **新增** | FR-064② 契约测试（7 用例） |
+| `docs/QA_REPORT.md` | **修改** | 第二轮 §R2.1 加勘误、第四轮 §T3.8.7 加勘误、**追加本第七轮章节** |
+
+**测试方法说明**：
+
+- 全部对照实验与变异测试在 **`git worktree @ 0386317`**（隔离 worktree）中执行 ——
+  与主工作区的并发改动（FR-063⑦ 改造）**完全隔离**，杜绝污染。
+- worktree 的 `node_modules` 通过 **Windows 目录联接（junction）** 指向主工作区（pnpm 软链在 Windows 不可用）。
+- 探针脚本（`*.mjs`）已**移出仓库**至 `C:/Users/renji/WorkBuddy/qa-probe-out/` ——
+  避免污染 `pnpm lint`（`.mjs` 不在 eslint 的 `files` 匹配范围，会落入 JS 通用规则集报 `no-undef`，
+  与第三轮 §T3.8.8 记录的 Vite 临时产物问题同源）。
+
+**工作区状态**：
+
+```
+$ git status --short
+ M scripts/verify-test-count.mjs
+ M docs/QA_REPORT.md
+?? packages/app/src/domain/timeline/__tests__/clipPropertyClamp.test.ts
+（其余为并发工程师的 FR-063⑦ 改动，非 QA 触碰）
+```
+
+**还原校验**：两个源文件变异的 md5 均已逐一比对，**与原始完全一致** ✅
+
+---
+
+*第七轮复核完 · 三项悬案全部独立验证 · FR-064② 契约缺口已补*

@@ -48,13 +48,18 @@ export async function saveProject(doc: ProjectDoc): Promise<void> {
 
 /**
  * 加载工程；不存在或解析失败时返回 null。
+ *
+ * ⚠️ 本路径读取的是**本应用自己写入**的工程 → 数据本应自洽。
+ * 若此处出现告警，说明本应用有 bug（开发期可观测问题），**不是用户侧问题**，
+ * 因此**刻意丢弃 warnings，不向用户展示**（FR-063⑦ ⑦-3）。
  */
 export async function loadProject(projectId: string): Promise<ProjectDoc | null> {
   const db = await getDb();
   const record = await db.get('projects', projectId);
   if (!record) return null;
   try {
-    return deserialize(JSON.parse(record.payload) as unknown);
+    const { doc } = deserialize(JSON.parse(record.payload) as unknown);
+    return doc;
   } catch {
     return null;
   }
@@ -72,7 +77,10 @@ export async function deleteProject(projectId: string): Promise<void> {
   // 级联删除：素材主 blob、缩略图与代理文件。
   const keys: string[] = [];
   try {
-    const doc = deserialize(JSON.parse(record.payload) as unknown);
+    // ⚠️ 本路径仅为提取 blobKey 而解析整份工程 —— 连 `doc` 都只用 `assets` 一角，
+    // 任何提示都是纯噪音（用户每次删工程都莫名弹提示的直接来源），
+    // 因此**刻意丢弃 warnings**（FR-063⑦ ⑦-3）。
+    const { doc } = deserialize(JSON.parse(record.payload) as unknown);
     for (const asset of Object.values(doc.assets)) {
       if (asset.blobKey) keys.push(asset.blobKey);
       if (asset.thumbnailBlobKey) keys.push(asset.thumbnailBlobKey);

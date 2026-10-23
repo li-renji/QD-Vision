@@ -13,7 +13,7 @@ import { setClipProperty, splitSelectedClip, undo, redo } from '../actions.js';
 
 /** 重置全部 store。 */
 function resetStores(): void {
-  const doc = deserialize(readFixtureJson('full.clipcut.json'));
+  const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
   useProjectStore.getState().setDoc(doc, { markDirty: false });
   useHistoryStore.getState().reset();
   useUiStore.getState().setSelectedClipIds([]);

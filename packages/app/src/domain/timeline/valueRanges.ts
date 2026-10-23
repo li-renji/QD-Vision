@@ -14,6 +14,17 @@
  * 2. `deserialize` —— 导入外部 / 第三方分享的工程文件。
  *
  * 将来新增受约束字段时，**只需在下面的表里加一行**，两条路径自动同时生效。
+ *
+ * ## 钳制「改了什么」如何被感知（FR-063⑦）
+ *
+ * 钳制本身是**静默的就地修改**（编辑路径不该打扰用户），但导入路径需要把
+ * 「系统替我改了什么」**如实记录**下来（`value-clamped` 告警）。
+ *
+ * 因此钳制函数接受一个**可选**的收集参数（`ClampOptions.changes`）：
+ * - **不传** → 行为与改造前完全一致（`setClipProperty` 等调用点零改动）；
+ * - **传了** → 每次「值确实被改变」时追加一条 `ClampChange`。
+ *
+ * 这样既不破坏既有调用方式，又让 `deserialize` 能产出可断言的告警数据。
  */
 
 import type { Clip, ProjectDoc } from '@clipcut/shared-types';
@@ -70,6 +81,33 @@ export const TRACK_NUMERIC_RANGES: Readonly<Record<string, NumericRange>> = {
   height: [1, 200],
 };
 
+
+/**
+ * 一次钳制实际改变某处数值的事实（FR-063⑦）。
+ *
+ * 与 `DeserializeWarning` 同构：`deserialize` 负责把 `ClampChange` 映射为
+ * `value-clamped` 告警，并补上 `clipId`。
+ */
+export interface ClampChange {
+  /** 受影响的字段路径，如 `'transform.scale'` / `'settings.canvas.width'`。 */
+  path: string;
+  /** 钳制前的原值。 */
+  actual: number;
+  /** 钳制后采用的值。 */
+  expected: number;
+}
+
+/**
+ * 钳制的**可选**参数（FR-063⑦）。
+ *
+ * 全部字段可省略 —— 省略时行为与改造前完全一致（既有调用点零改动）。
+ */
+export interface ClampOptions {
+  /** 收集「被改动的数值」；不传 → 完全静默（既有行为）。 */
+  changes?: ClampChange[] | undefined;
+  /** 字段路径前缀（工程级钳制用，如 `'settings.canvas.'`）。 */
+  pathPrefix?: string | undefined;
+}
 
 /** 可按路径读写的对象。 */
 type PathTarget = Record<string, unknown>;
@@ -128,36 +166,62 @@ export function clampToRange(path: string, value: number): number {
  *
  * 静默处理（与 `setClipProperty` 的既有行为一致）：用户导入一个正常工程
  * （可能来自旧版本或其他工具，数值略有偏差）时不应看到一堆警告。
+ *
+ * @param root 被钳制的对象（原地修改）
+ * @param ranges 约束表
+ * @param options 可选：收集「改了什么」（FR-063⑦）+ 字段路径前缀
  */
 export function clampNumericValues(
   root: PathTarget,
   ranges: Readonly<Record<string, NumericRange>>,
+  options?: ClampOptions,
 ): void {
+  const prefix = options?.pathPrefix ?? '';
   for (const [path, range] of Object.entries(ranges)) {
     const current = readPath(root, path);
     if (current === undefined) continue;
-    writePath(root, path, clampNumber(current, range));
+    const clamped = clampNumber(current, range);
+    writePath(root, path, clamped);
+    // 只有「值确实被改变」才算一次修正 —— 值在区间内不记录（绝不占位）。
+    if (clamped === current) continue;
+    options?.changes?.push({ path: `${prefix}${path}`, actual: current, expected: clamped });
   }
 }
 
 /**
- * 钳制 clip 上的全部受约束数值（12 条路径）。
+ * 钳制 clip 上的全部受约束数值（15 条路径）。
  *
  * 原地修改传入的 clip。
+ *
+ * @param clip 被钳制的 clip（原地修改）
+ * @param options 可选：收集「改了什么」（FR-063⑦）
  */
-export function clampClipNumericValues(clip: Clip): void {
-  clampNumericValues(clip as unknown as PathTarget, CLIP_NUMERIC_RANGES);
+export function clampClipNumericValues(clip: Clip, options?: ClampOptions): void {
+  clampNumericValues(clip as unknown as PathTarget, CLIP_NUMERIC_RANGES, options);
 }
 
 /**
  * 钳制工程级的画布 / 导出 / 轨道参数。
  *
  * 原地修改传入的工程。
+ *
+ * @param doc 被钳制的工程（原地修改）
+ * @param options 可选：收集「改了什么」（FR-063⑦）
  */
-export function clampProjectNumericValues(doc: ProjectDoc): void {
-  clampNumericValues(doc.settings.canvas as unknown as PathTarget, CANVAS_NUMERIC_RANGES);
-  clampNumericValues(doc.settings.export as unknown as PathTarget, EXPORT_NUMERIC_RANGES);
+export function clampProjectNumericValues(doc: ProjectDoc, options?: ClampOptions): void {
+  const changes = options?.changes;
+  clampNumericValues(doc.settings.canvas as unknown as PathTarget, CANVAS_NUMERIC_RANGES, {
+    changes,
+    pathPrefix: 'settings.canvas.',
+  });
+  clampNumericValues(doc.settings.export as unknown as PathTarget, EXPORT_NUMERIC_RANGES, {
+    changes,
+    pathPrefix: 'settings.export.',
+  });
   for (const track of doc.tracks) {
-    clampNumericValues(track as unknown as PathTarget, TRACK_NUMERIC_RANGES);
+    clampNumericValues(track as unknown as PathTarget, TRACK_NUMERIC_RANGES, {
+      changes,
+      pathPrefix: 'track.',
+    });
   }
 }

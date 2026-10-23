@@ -5,7 +5,13 @@
  */
 
 export { serialize, serializeToObject } from './serialize.js';
-export { deserialize } from './deserialize.js';
+export {
+  deserialize,
+  deserializeFromJson,
+  type DeserializeResult,
+  type DeserializeWarning,
+  type DeserializeWarningCode,
+} from './deserialize.js';
 export {
   CURRENT_SCHEMA_VERSION,
   UnsupportedSchemaVersionError,

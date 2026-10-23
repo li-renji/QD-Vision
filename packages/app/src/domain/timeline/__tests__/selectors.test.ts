@@ -20,13 +20,13 @@ import {
 
 describe('domain/timeline/selectors', () => {
   it('orderedTracks 按 order 升序', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const orders = orderedTracks(doc).map((track) => track.order);
     expect([...orders].sort((a, b) => a - b)).toEqual(orders);
   });
 
   it('visibleVideoTracks 排除 hidden 轨', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const hiddenDoc = {
       ...doc,
       tracks: doc.tracks.map((track) =>
@@ -40,12 +40,12 @@ describe('domain/timeline/selectors', () => {
   });
 
   it('textTracks 只返回文字轨', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     expect(textTracks(doc).every((track) => track.type === 'text')).toBe(true);
   });
 
   it('findClip / findTrack 定位', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const found = findClip(doc, 'clip_full_c1');
     expect(found?.clip.id).toBe('clip_full_c1');
     expect(found?.track.id).toBe('track_full_v1');
@@ -55,7 +55,7 @@ describe('domain/timeline/selectors', () => {
   });
 
   it('clipsAtTime 返回该时刻所有活动 clip', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const clips = clipsAtTime(doc, 2500);
     expect(clips.map((clip) => clip.id).sort()).toEqual([
       'clip_full_c1',
@@ -66,7 +66,7 @@ describe('domain/timeline/selectors', () => {
   });
 
   it('clipsAtTime 排除 hidden 轨', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const hiddenDoc = {
       ...doc,
       tracks: doc.tracks.map((track) =>
@@ -77,7 +77,7 @@ describe('domain/timeline/selectors', () => {
   });
 
   it('overlayClipsAtTime 按 zIndex 升序', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const overlays = overlayClipsAtTime(doc, 2500);
     expect(overlays.length).toBeGreaterThan(0);
     expect(overlays.every((clip) => clip.isOverlay)).toBe(true);
@@ -86,7 +86,7 @@ describe('domain/timeline/selectors', () => {
   });
 
   it('clipEndMs / trackDurationMs', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const clip = doc.tracks.flatMap((t) => t.clips).find((c) => c.id === 'clip_full_c1');
     expect(clip).toBeDefined();
     expect(clipEndMs(clip!)).toBe(12_000);
@@ -97,7 +97,7 @@ describe('domain/timeline/selectors', () => {
   });
 
   it('clipAtTimeOnTrack 定位轨道上的 clip', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const track = doc.tracks.find((t) => t.id === 'track_full_v1');
     expect(track).toBeDefined();
     expect(clipAtTimeOnTrack(track!, 2500)?.id).toBe('clip_full_c1');

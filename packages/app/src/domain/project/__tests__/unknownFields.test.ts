@@ -12,7 +12,7 @@ describe('domain/project/unknownFields', () => {
     const json = readFixtureJson('minimal.clipcut.json') as Record<string, unknown>;
     json['customFoo'] = 123;
 
-    const doc = deserialize(json);
+    const { doc } = deserialize(json);
     expect(doc['customFoo']).toBe(123);
 
     const output = serializeToObject(doc);
@@ -28,7 +28,7 @@ describe('domain/project/unknownFields', () => {
       firstTrack['customTrackField'] = { nested: true };
     }
 
-    const doc = deserialize(json);
+    const { doc } = deserialize(json);
     const outputTracks = serializeToObject(doc)['tracks'] as Array<Record<string, unknown>>;
     expect(outputTracks[0]?.['customTrackField']).toEqual({ nested: true });
   });
@@ -43,7 +43,7 @@ describe('domain/project/unknownFields', () => {
       clip['customClipField'] = 'keep-me';
     }
 
-    const doc = deserialize(json);
+    const { doc } = deserialize(json);
     const output = serializeToObject(doc) as Record<string, unknown>;
     const outputTracks = output['tracks'] as Array<Record<string, unknown>>;
     const outputClips = outputTracks[0]?.['clips'] as Array<Record<string, unknown>>;
@@ -54,8 +54,8 @@ describe('domain/project/unknownFields', () => {
     const json = readFixtureJson('minimal.clipcut.json') as Record<string, unknown>;
     json['customFoo'] = 123;
 
-    const first = serialize(deserialize(json));
-    const second = serialize(deserialize(JSON.parse(first) as unknown));
+    const first = serialize(deserialize(json).doc);
+    const second = serialize(deserialize(JSON.parse(first) as unknown).doc);
     expect(second).toBe(first);
     expect(JSON.parse(first) as Record<string, unknown>).toHaveProperty('customFoo', 123);
   });
@@ -63,7 +63,7 @@ describe('domain/project/unknownFields', () => {
 
 describe('domain/project/deserialize · 保留用户自定义值', () => {
   it('clip 的 transform 与 audio 参数不被默认值覆盖', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const pip = doc.tracks.flatMap((track) => track.clips).find((clip) => clip.id === 'clip_full_c2');
     expect(pip?.transform.x).toBe(0.75);
     expect(pip?.transform.y).toBe(0.25);

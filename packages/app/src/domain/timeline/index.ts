@@ -44,6 +44,7 @@ export {
 } from './operations.js';
 export {
   ClipInvariantError,
+  DURATION_RECOMPUTE_TOLERANCE_MS,
   MAX_CLIP_SPEED,
   MIN_CLIP_DURATION_MS,
   MIN_CLIP_SPEED,
@@ -89,5 +90,7 @@ export {
   clampNumericValues,
   clampProjectNumericValues,
   clampToRange,
+  type ClampChange,
+  type ClampOptions,
   type NumericRange,
 } from './valueRanges.js';

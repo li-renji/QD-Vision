@@ -36,6 +36,8 @@ export const enUS: Record<string, string> = {
   'project.import.tooNew': 'Project file version is too new ({version}); this build supports {supported}.',
   'project.import.invalid': 'Invalid project file: {reason}',
   'project.import.missingAssets': '{count} assets are missing on this device and need relinking.',
+  'project.import.dataAdjusted':
+    'The project file had {count} inconsistent value(s); they were corrected automatically (durations recomputed from source ranges).',
   'project.relink.title': 'Relink assets',
   'project.relink.description': 'The assets below cannot be found on this device. Pick the local files again.',
   'project.relink.relink': 'Relink',

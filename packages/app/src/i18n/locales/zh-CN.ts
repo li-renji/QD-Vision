@@ -36,6 +36,7 @@ export const zhCN: Record<string, string> = {
   'project.import.tooNew': '工程文件版本过高（{version}），当前应用仅支持 {supported}，请升级后再试。',
   'project.import.invalid': '工程文件格式非法：{reason}',
   'project.import.missingAssets': '有 {count} 个素材在本机缺失，导入后需要重新定位。',
+  'project.import.dataAdjusted': '工程文件存在 {count} 处不一致数据，已自动修正（时长已按素材区间重算）。',
   'project.relink.title': '重新定位素材',
   'project.relink.description': '以下素材在当前设备上找不到，请重新指定本地文件。',
   'project.relink.relink': '重新定位',

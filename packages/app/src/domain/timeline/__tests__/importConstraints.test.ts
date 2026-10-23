@@ -39,7 +39,7 @@ describe('FR-063 · 导入时重算 clip 派生量', () => {
     const clip = firstClip(json);
     clip.durationMs = 999_999;
 
-    const doc = deserialize(json);
+    const { doc } = deserialize(json);
     const restored = doc.tracks
       .flatMap((track) => track.clips)
       .find((item) => item.id === clip.id);
@@ -55,7 +55,7 @@ describe('FR-063 · 导入时重算 clip 派生量', () => {
     const clip = firstClip(json);
     clip.durationMs = 0;
 
-    const doc = deserialize(json);
+    const { doc } = deserialize(json);
     const restored = doc.tracks
       .flatMap((track) => track.clips)
       .find((item) => item.id === clip.id);
@@ -72,7 +72,7 @@ describe('FR-063 · 导入时重算 clip 派生量', () => {
     if (!textClip) return;
     textClip['durationMs'] = 4321;
 
-    const doc = deserialize(json);
+    const { doc } = deserialize(json);
     const restored = doc.tracks
       .flatMap((track) => track.clips)
       .find((item) => item.id === textClip['id']);
@@ -96,7 +96,7 @@ describe('FR-064 · 导入路径复用领域层数值约束', () => {
     const clip = firstClip(json);
     clip.transform.scale = 0.001;
 
-    const doc = deserialize(json);
+    const { doc } = deserialize(json);
     const restored = doc.tracks
       .flatMap((track) => track.clips)
       .find((item) => item.id === clip.id);
@@ -109,7 +109,7 @@ describe('FR-064 · 导入路径复用领域层数值约束', () => {
     clip.transform.cornerRadius = 99_999;
     clip.transform.rotation = 1e9;
 
-    const doc = deserialize(json);
+    const { doc } = deserialize(json);
     const restored = doc.tracks
       .flatMap((track) => track.clips)
       .find((item) => item.id === clip.id);
@@ -133,7 +133,7 @@ describe('FR-064 · 导入路径复用领域层数值约束', () => {
   });
 
   it('编辑路径的 fps 越界被静默钳制（与 setClipProperty 行为一致）', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
 
     const exported = setExportSettings({ doc, assets: doc.assets }, { fps: 1 });
     expect(exported.doc.settings.export.fps).toBe(MIN_EXPORT_FPS);
@@ -171,7 +171,7 @@ describe('D-003 · 帧率下限与最小片段时长的契约', () => {
 
   it('帧率过低时 buildExportPlan 给出错误与建议', async () => {
     const { buildExportPlan } = await import('../../export/exportPlan.js');
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const plan = buildExportPlan(doc, {
       width: 1920,
       height: 1080,

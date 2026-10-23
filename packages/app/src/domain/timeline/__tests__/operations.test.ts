@@ -45,7 +45,7 @@ function assertAllInvariants(doc: ProjectDoc): void {
 
 describe('domain/timeline/operations', () => {
   it('新增 clip 后不变式成立', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const context = makeContext(doc);
     const result = addClip(context, {
       assetId: 'asset_full01',
@@ -65,7 +65,7 @@ describe('domain/timeline/operations', () => {
   });
 
   it('图片素材默认 5s 时长', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const result = addClip(makeContext(doc), {
       assetId: 'asset_full03',
       trackId: 'track_full_v2',
@@ -79,7 +79,7 @@ describe('domain/timeline/operations', () => {
   });
 
   it('视频素材不能拖到音频轨（跨类型禁止）', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     expect(() =>
       addClip(makeContext(doc), {
         assetId: 'asset_full01',
@@ -92,7 +92,7 @@ describe('domain/timeline/operations', () => {
   });
 
   it('音频素材不能拖到视频轨', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     expect(() =>
       addClip(makeContext(doc), {
         assetId: 'asset_full02',
@@ -105,7 +105,7 @@ describe('domain/timeline/operations', () => {
   });
 
   it('裁剪越界被钳制且不小于 100ms', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const context = makeContext(doc);
     const media = asset(doc, 'asset_full01');
 
@@ -128,7 +128,7 @@ describe('domain/timeline/operations', () => {
   });
 
   it('分割产生两段且共享素材引用', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const result = splitClip(makeContext(doc), 'clip_full_c1', 4000);
     const clips = result.doc.tracks.flatMap((track) => track.clips);
     const right = clips.find((clip) => clip.id === result.selectedClipId);
@@ -142,14 +142,14 @@ describe('domain/timeline/operations', () => {
   });
 
   it('分割点在首尾 1 帧内时抛错', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const context = makeContext(doc);
     expect(() => splitClip(context, 'clip_full_c1', 0)).toThrowError(NotSplittableError);
     expect(() => splitClip(context, 'clip_full_c1', 12_000)).toThrowError(NotSplittableError);
   });
 
   it('变速：speed 1 → 2 时 durationMs 减半、in/out 不变', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const result = setClipSpeed(makeContext(doc), 'clip_full_c1', 2);
     const clip = result.doc.tracks.flatMap((t) => t.clips).find((c) => c.id === 'clip_full_c1');
 
@@ -161,14 +161,14 @@ describe('domain/timeline/operations', () => {
   });
 
   it('移动 clip 改变 startMs', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const result = moveClip(makeContext(doc), 'clip_full_c1', 'track_full_v1', 3000);
     const clip = result.doc.tracks.flatMap((t) => t.clips).find((c) => c.id === 'clip_full_c1');
     expect(clip?.startMs).toBe(3000);
   });
 
   it('删除与复制 clip', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const context = makeContext(doc);
 
     const duplicated = duplicateClip(context, 'clip_full_c1', 'track_full_v2', 5000);
@@ -185,7 +185,7 @@ describe('domain/timeline/operations', () => {
   });
 
   it('setClipProperty 只接受白名单路径', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const context = makeContext(doc);
 
     const updated = setClipProperty(context, 'clip_full_c1', 'audio.gain', 0.5);
@@ -196,14 +196,14 @@ describe('domain/timeline/operations', () => {
   });
 
   it('删除轨道会连带删除其 clip', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const result = removeTrack(makeContext(doc), 'track_full_a1');
     expect(result.doc.tracks.some((track) => track.id === 'track_full_a1')).toBe(false);
     expect(result.doc.tracks.flatMap((t) => t.clips).some((c) => c.id === 'clip_full_c3')).toBe(false);
   });
 
   it('fixClipDuration 重算时长', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const clip = doc.tracks.flatMap((t) => t.clips).find((c) => c.id === 'clip_full_c1');
     expect(clip).toBeDefined();
     if (!clip) return;

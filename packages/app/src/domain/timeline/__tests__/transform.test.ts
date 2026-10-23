@@ -9,7 +9,7 @@ import { applyCanvasResize } from '../index.js';
 
 describe('domain/timeline/transform', () => {
   it('16:9 → 9:16 时 x/y 按宽高比换算，字号按高度换算', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const clipBefore = doc.tracks.flatMap((t) => t.clips).find((c) => c.id === 'clip_full_c2');
     expect(clipBefore).toBeDefined();
 
@@ -24,7 +24,7 @@ describe('domain/timeline/transform', () => {
   });
 
   it('文字 clip 的 fontSize 按新画布高度换算', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const textBefore = doc.tracks
       .flatMap((t) => t.clips)
       .find((c) => c.id === 'clip_full_c4');
@@ -36,14 +36,14 @@ describe('domain/timeline/transform', () => {
   });
 
   it('画布尺寸被写入新值', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const { doc: next } = applyCanvasResize(doc, 1080, 1080);
     expect(next.settings.canvas.width).toBe(1080);
     expect(next.settings.canvas.height).toBe(1080);
   });
 
   it('原文档不被修改（不可变更新）', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const before = doc.tracks.flatMap((t) => t.clips).find((c) => c.id === 'clip_full_c2');
     applyCanvasResize(doc, 1080, 1920);
     const after = doc.tracks.flatMap((t) => t.clips).find((c) => c.id === 'clip_full_c2');

@@ -15,7 +15,7 @@ import { readFixtureJson } from '../../../test/fixtures.js';
 
 describe('domain/project/migrate', () => {
   it('低版本文件加载不抛异常，并补齐缺省字段', () => {
-    const doc = deserialize(readFixtureJson('legacy-0.9.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('legacy-0.9.clipcut.json'));
     expect(doc.schemaVersion).toBe('1.0.0');
     expect(doc.settings.ai.routes).toBeDefined();
     expect(doc.settings.ai.providers).toBeDefined();

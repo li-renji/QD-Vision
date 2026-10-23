@@ -50,7 +50,26 @@ function toPointer(error: ErrorObject): string {
   return path;
 }
 
-/** 为 Ajv 错误生成中文提示。 */
+/**
+ * 为 Ajv 错误生成中文提示。
+ *
+ * ## Ajv v8 的 `params` 参数名（易踩坑）
+ *
+ * Ajv v8（实测 8.20.0）的数值类错误 `params` 结构为：
+ *
+ * ```json
+ * { "keyword": "minimum", "params": { "comparison": ">=", "limit": 10 } }
+ * ```
+ *
+ * - `params.comparison` 是**操作符**（`">="` / `"<="` / `">"` / `"<"`）；
+ * - `params.limit` 才是**约束数值**（`10`）。
+ *
+ * 展示给用户的必须是 `limit`；误用 `comparison` 会输出「不能小于 >=」这种
+ * 既方向含混、又没有阈值的信息。
+ *
+ * 方向约定：`minimum` 表示「不得小于该值」，`maximum` 表示「不得大于该值」，
+ * `exclusiveMinimum` 表示「必须严格大于」，`exclusiveMaximum` 表示「必须严格小于」。
+ */
 function toHint(error: ErrorObject): string {
   const pointer = toPointer(error);
   const location = pointer ? `字段 ${pointer}` : '根节点';
@@ -60,9 +79,13 @@ function toHint(error: ErrorObject): string {
     case 'type':
       return `${location} 类型应为 ${String(error.params?.type)}`;
     case 'minimum':
-      return `${location} 不能小于 ${String(error.params?.comparison)}`;
+      return `${location} 不能小于 ${String(error.params?.limit)}`;
     case 'maximum':
-      return `${location} 不能大于 ${String(error.params?.comparison)}`;
+      return `${location} 不能大于 ${String(error.params?.limit)}`;
+    case 'exclusiveMinimum':
+      return `${location} 必须大于 ${String(error.params?.limit)}`;
+    case 'exclusiveMaximum':
+      return `${location} 必须小于 ${String(error.params?.limit)}`;
     case 'pattern':
       return `${location} 格式不合法`;
     case 'enum':

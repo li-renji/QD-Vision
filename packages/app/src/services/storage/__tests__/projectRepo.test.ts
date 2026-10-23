@@ -14,7 +14,7 @@ describe('services/storage/projectRepo', () => {
   });
 
   it('保存后可以按 id 加载回工程', async () => {
-    const doc = deserialize(readFixtureJson('minimal.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('minimal.clipcut.json'));
     await saveProject(doc);
 
     const loaded = await loadProject(doc.projectId);
@@ -24,7 +24,7 @@ describe('services/storage/projectRepo', () => {
   });
 
   it('listProjects 严格按 updatedAt 倒序', async () => {
-    const base = deserialize(readFixtureJson('minimal.clipcut.json'));
+    const { doc: base } = deserialize(readFixtureJson('minimal.clipcut.json'));
 
     const older = { ...base, projectId: 'p-older', name: '较早', updatedAt: '2020-01-01T00:00:00.000Z' };
     const newer = { ...base, projectId: 'p-newer', name: '较新', updatedAt: '2030-01-01T00:00:00.000Z' };
@@ -41,7 +41,7 @@ describe('services/storage/projectRepo', () => {
   });
 
   it('删除工程会级联删除关联 blob', async () => {
-    const doc = deserialize(readFixtureJson('minimal.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('minimal.clipcut.json'));
     await saveProject(doc);
     await putBlob('blob:asset_min01', new Blob(['x']));
 

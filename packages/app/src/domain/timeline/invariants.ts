@@ -31,6 +31,20 @@ import type { Asset, Clip } from '@clipcut/shared-types';
 /** 最小 clip 时长（毫秒）—— 时间线时长口径。 */
 export const MIN_CLIP_DURATION_MS = 100;
 
+/**
+ * 时长重算告警的容差（毫秒）—— FR-063⑦。
+ *
+ * `|expected − actual| <= DURATION_RECOMPUTE_TOLERANCE_MS` 的差异视为**取整噪声**，
+ * 不产生 `duration-recomputed` 告警。
+ *
+ * ## 为什么需要容差
+ *
+ * 将来若时长公式微调（如 `round` 改 `floor`），全量工程文件都会出现 1ms 级偏差。
+ * 若无容差，导入一个正常工程就会弹出一堆警告 —— 正是 PRD §9.0.1 准则二禁止的形态。
+ * 容差是「不骚扰」在数据层的最后一道闸。
+ */
+export const DURATION_RECOMPUTE_TOLERANCE_MS = 1;
+
 /** 变速下界。 */
 export const MIN_CLIP_SPEED = 0.1;
 

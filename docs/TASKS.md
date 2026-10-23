@@ -859,19 +859,69 @@ flowchart TB
 | 项 | 内容 |
 |---|---|
 | **优先级** | P0 阻塞 |
-| **状态** | 新增 |
+| **状态** | 新增（实现要点 1~3 **已落地**；**实现要点 4~5 = FR-063⑦ 告警通道，本轮唯一剩余缺口**） |
 | **依赖** | T05、T06 |
-| **PRD 依据** | PRD §9 FR-063（导入路径派生量重算）、FR-064（公共数值钳制函数） |
-| **涉及文件** | `packages/app/src/domain/project/deserialize.ts`、`packages/app/src/domain/timeline/valueRanges.ts`、`operations.ts`、`schema/project.schema.json` |
+| **PRD 依据** | PRD §9 FR-063（导入路径派生量重算）、FR-064（公共数值钳制函数）、**FR-063⑦ 告警传递方式（见 [FR-063⑦ 规格裁决记录](./FR063-7-decision.md)）** |
+| **涉及文件** | `packages/app/src/domain/project/deserialize.ts`、`packages/app/src/domain/project/index.ts`、`packages/app/src/domain/timeline/valueRanges.ts`、`packages/app/src/domain/timeline/invariants.ts`、`operations.ts`、`packages/app/src/components/project/ImportProjectDialog.tsx`、`packages/app/src/services/storage/projectRepo.ts`、`packages/app/src/i18n/locales/*.ts`、`schema/project.schema.json` |
 
 **实现要点**
 
-1. **FR-063**：`deserialize` 对每个 clip 调 `fixClipDuration` 重算 `durationMs`（文字 clip `assetId === null` 按 PRD 豁免）；`outMs <= inMs` **显式拒绝**（结构性非法，重算无法修正）。
-2. **FR-064**：把 `NUMERIC_RANGES` 抽成 `valueRanges.ts` 的**单一真源**，`setClipProperty`（编辑路径）与 `deserialize`（导入路径）**共用同一份钳制逻辑** —— 12 条 clip 路径 + 工程级路径全部接入。
-3. **Schema 补上限**：`track.height`（max 200）、`canvas.width/height`（max 7680/4320）。
+1. **FR-063**：`deserialize` 对每个 clip 调 `fixClipDuration` 重算 `durationMs`（文字 clip `assetId === null` 按 PRD 豁免）；`outMs <= inMs` **显式拒绝**（结构性非法，重算无法修正）。 ✅ **已落地**（`deserialize.ts:214` / `:205`）
+2. **FR-064**：把 `NUMERIC_RANGES` 抽成 `valueRanges.ts` 的**单一真源**，`setClipProperty`（编辑路径）与 `deserialize`（导入路径）**共用同一份钳制逻辑** —— 12 条 clip 路径 + 工程级路径全部接入。 ✅ **已落地**（`valueRanges.ts`，`deserialize.ts:27` 与 `operations.ts` 共用）
+3. **Schema 补上限**：`track.height`（max 200）、`canvas.width/height`（max 7680/4320）。 ✅ **已落地**（`schema/project.schema.json:78` / `:79` / `:240`）
+4. **FR-063⑦ 告警通道（本轮新增，唯一剩余 P0 缺口）** —— **强制契约，非建议**：
+
+   | # | 要求 |
+   |---|---|
+   | 4-1 | `deserialize` 返回类型改为 `DeserializeResult { doc: ProjectDoc; warnings: DeserializeWarning[] }`；**不存在**返回裸 `ProjectDoc` 的平行入口（告警通道在类型层面不可绕开） |
+   | 4-2 | `deserializeFromJson` 返回**相同**类型，并从 `domain/project/index.ts` 一并导出（当前只导出了 `deserialize`） |
+   | 4-3 | `DeserializeWarning` 形状：`{ code: 'duration-recomputed' \| 'value-clamped'; clipId?: string; field: string; expected: number; actual: number }` —— `expected` = 系统采用值，`actual` = 文件原值 |
+   | 4-4 | `warnings` 只装两类 code，**不装**「校验通过」等正常事件；未发生修正 → 空数组 |
+   | 4-5 | `duration-recomputed` 仅在 `\|expected − actual\| > DURATION_RECOMPUTE_TOLERANCE_MS`（**= 1**，与 `expectedDurationMs` 同文件 `invariants.ts`）时产生；文字 clip（`assetId === null`）天然不产生 |
+   | 4-6 | `value-clamped` 产生条件：钳制**确实改变了值**；实现上给 `clampNumericValues` / `clampClipNumericValues` / `clampProjectNumericValues` 增加**可选**收集参数（不传时行为完全不变 → `setClipProperty` 等现有调用点零改动，FR-064 的「同一函数」契约与判据 6 保持成立） |
+   | 4-7 | **排序确定性**：`duration-recomputed` 在前、`value-clamped` 在后；组内按 track → clip → 字段路径字典序 |
+   | 4-8 | ⚠️ **硬约束**：`doc` 必须是纯 `ProjectDoc`，**不得**在 doc 上挂载 `warnings` —— `serialize.ts` 的 `canonicalObject` 保留未知键 + Schema 顶层 `additionalProperties: true`，会把 `warnings` **写回用户保存的工程文件**（用户数据污染） |
+   | 4-9 | `deserialize` 保持纯函数：不碰 UI / IndexedDB / i18n / toast；领域层不 import i18n |
+
+   **四个出口的改造方式（强制）**：
+
+   | # | 出口 | 改造后 | 展示 |
+   |---|---|---|---|
+   | 1 | `components/project/ImportProjectDialog.tsx:59` | `const { doc, warnings } = deserialize(json)` | ✅ 按 4-10 呈现 |
+   | 2 | `services/storage/projectRepo.ts:57` `loadProject` | `const { doc } = deserialize(...)`；丢弃 `warnings` | ❌ |
+   | 3 | `services/storage/projectRepo.ts:75` `deleteProject` | `const { doc } = deserialize(...)`；丢弃 `warnings` | ❌ |
+   | 4 | `domain/project/deserialize.ts:227` `deserializeFromJson` | 返回 `DeserializeResult` | ❌ 本函数不展示 |
+
+   **UI 呈现（强制）**：**单条** toast，`variant: 'warning'`；**只统计** `warnings.filter((w) => w.code === 'duration-recomputed').length`（`value-clamped` **不得**进 UI）；**多条合并为一条**，文案含数量 `{count}`，不逐条列举；**告警 toast 先发**，既有 `missingAssets` / `ok` 分支逻辑一字不改；明细列表本期不做（P2）。
+
+   **i18n 键（`zh-CN.ts` 与 `en-US.ts` 必须成对新增，键集完全一致）**：
+   - `project.import.dataAdjusted` = `工程文件存在 {count} 处不一致数据，已自动修正（时长已按素材区间重算）。`
+   - en-US = `The project file had {count} inconsistent value(s); they were corrected automatically (durations recomputed from source ranges).`
+
+5. **测试迁移（85 处取值型调用点）**：`packages/app/src/**/*.test.ts` 中 `const doc = deserialize(...)` → `const { doc } = deserialize(...)`；`expect(() => deserialize(...)).toThrow()` 型（**3 处**）**无需改动**。迁移点**全部由 TypeScript 编译器逐个定位**，不存在「改漏了但测试还绿」的可能。
 
 **验收标准**
 
-- [ ] 篡改 `durationMs` 的工程导入后被重算为公式值。
-- [ ] 篡改 `scale` / `rotation` / `cornerRadius` / `lineHeight` 的工程导入后被钳制到合法区间。
-- [ ] `outMs <= inMs` 的工程导入被明确拒绝。
+- [ ] 篡改 `durationMs` 的工程导入后被重算为公式值。（✅ 已满足）
+- [ ] 篡改 `scale` / `rotation` / `cornerRadius` / `lineHeight` 的工程导入后被钳制到合法区间。（✅ 已满足）
+- [ ] `outMs <= inMs` 的工程导入被明确拒绝。（✅ 已满足）
+- [ ] `deserialize` / `deserializeFromJson` 返回 `DeserializeResult`，`domain/project/index.ts` 导出 `DeserializeResult` / `DeserializeWarning` / `DeserializeWarningCode`。
+- [ ] `doc` 上**没有** `warnings` 键；`serialize(deserialize(x).doc)` 逐字节往返仍与基线一致。
+- [ ] 篡改 `durationMs` 的工程导入 → `warnings` 含 `duration-recomputed`（`expected` = 公式值、`actual` = 原值），且 `warnings[0].code === 'duration-recomputed'`。
+- [ ] 差值 **1ms** → **不**产生告警；差值 **2ms** → **产生**告警（容差边界各一条用例）。
+- [ ] 篡改 `scale` 越界 → `warnings` 含 `value-clamped`，且排在 `duration-recomputed` **之后**。
+- [ ] `ImportProjectDialog` 导入不一致工程时弹出**恰好一条** `project.import.dataAdjusted` toast，含修正项数量；导入正常工程时**不弹**该 toast。
+- [ ] `loadProject` / `deleteProject` 路径**不产生任何**告警 UI。
+- [ ] `zh-CN` 与 `en-US` 键集完全一致；领域层未 import i18n。
+- [ ] `pnpm typecheck` 0 error、`pnpm test` 全绿、`node scripts/check-prd-sync.mjs` 通过。
+
+**配套测试（PRD §9.13）**
+
+| # | 测试 | 对应验收 |
+|---|---|---|
+| T1 | 导入时重算 `durationMs` + `warnings` 含 `duration-recomputed` | 第 4 / 6 条 |
+| T2 | 文字 clip 不被重算，**且无对应 warning** | 第 6 条 |
+| T3 | `outMs <= inMs` 显式拒绝，**不返回结果** | 第 3 条 |
+| T4 | 告警通道结构（返回 `DeserializeResult`、`doc` 纯净、无修正时 `warnings` 为空数组） | 第 4 / 5 条 |
+| T5 | 容差边界（1ms 不告警 / 2ms 告警） | 第 7 条 |
+| T6 | 两个 code 的排序与内容边界 | 第 8 条 |

@@ -88,7 +88,7 @@ function createFakeBitmap(width: number, height: number): ImageBitmap {
 
 describe('render/compositor', () => {
   it('轨道 order 小的在下、大的在上（绘制顺序）', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const { calls, ctx } = createMockContext();
 
     renderFrame(ctx, doc, 2500, {
@@ -102,7 +102,7 @@ describe('render/compositor', () => {
   });
 
   it('hidden 轨的 clip 不参与渲染', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const hiddenDoc = {
       ...doc,
       tracks: doc.tracks.map((track) =>
@@ -123,7 +123,7 @@ describe('render/compositor', () => {
   });
 
   it('文字轨在视频之后绘制', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const { calls, ctx } = createMockContext();
 
     renderFrame(ctx, doc, 1500, { getFrame: () => createFakeBitmap(1920, 1080) });
@@ -136,7 +136,7 @@ describe('render/compositor', () => {
   });
 
   it('PIP 超过 4 层时只渲染前 4 层并给出告警', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const warnings: string[] = [];
 
     const overlays = Array.from({ length: 6 }, (_, index) => ({
@@ -185,7 +185,7 @@ describe('render/compositor', () => {
   });
 
   it('字幕轨关闭时不绘制字幕', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const { calls, ctx } = createMockContext();
 
     renderFrame(ctx, doc, 1500, {
@@ -197,7 +197,7 @@ describe('render/compositor', () => {
   });
 
   it('字幕轨开启时绘制当前 cue', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const { calls, ctx } = createMockContext();
 
     renderFrame(ctx, doc, 1500, {

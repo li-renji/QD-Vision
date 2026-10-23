@@ -9,7 +9,7 @@ import { buildExportPlan, resolveResolution, RESOLUTION_PRESETS } from '../expor
 
 describe('domain/export/exportPlan', () => {
   it('计算总帧数与预计体积', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const plan = buildExportPlan(doc, {
       width: 1920,
       height: 1080,
@@ -28,7 +28,7 @@ describe('domain/export/exportPlan', () => {
   });
 
   it('4K@60 给出明确提示与降级建议', () => {
-    const doc = deserialize(readFixtureJson('full.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
     const plan = buildExportPlan(doc, {
       width: 3840,
       height: 2160,
@@ -54,7 +54,7 @@ describe('domain/export/exportPlan', () => {
   });
 
   it('零时长工程至少产生 1 帧', () => {
-    const doc = deserialize(readFixtureJson('minimal.clipcut.json'));
+    const { doc } = deserialize(readFixtureJson('minimal.clipcut.json'));
     const empty = { ...doc, meta: { ...doc.meta, durationMs: 0 } };
     const plan = buildExportPlan(empty, {
       width: 1920,
