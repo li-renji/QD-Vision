@@ -30,6 +30,7 @@ import {
   fadeGainAt,
   getActivePreviewAudio,
   getPreviewAudioDiagnostics,
+  resolveAssetSpeeds,
   resolveMasterGain,
   setActivePreviewAudio,
   unlockPreviewAudio,
@@ -277,6 +278,8 @@ interface Fixture {
   elements: Map<string, FakeMediaElement>;
   /** 被调用过 unmuteAsset 的 assetId 序列（顺序即调用顺序）。 */
   unmuted: string[];
+  /** 被调用过 setAssetSpeed 的记录（顺序即调用顺序）。 */
+  speedCalls: Array<{ assetId: string; speed: number }>;
   /** 取某 clip 的 clipGain 节点（不在图内则抛）。 */
   gainNode: (clipId: string) => MockGainNode;
   /** 取某 clip 当前生效的增益数值。 */
@@ -313,15 +316,18 @@ function createFixture(
       return registerElement(clip.assetId) as unknown as HTMLMediaElement;
     });
 
+  const speedCalls: Array<{ assetId: string; speed: number }> = [];
   const controller = createPreviewAudio({
     resolveElement,
     unmuteAsset: (assetId: string) => {
       unmuted.push(assetId);
       registerElement(assetId).muted = false;
     },
+    setAssetSpeed: (assetId: string, speed: number) => {
+      speedCalls.push({ assetId, speed });
+    },
     ...(options.engine ? { engine: options.engine } : {}),
   });
-
   if (options.doc) controller.sync(options.doc);
 
   const gainNode = (clipId: string): MockGainNode => {
@@ -334,6 +340,7 @@ function createFixture(
     controller,
     elements,
     unmuted,
+    speedCalls,
     gainNode,
     clipGain: (clipId: string) => controller.getClipGain(clipId),
     registerElement,
@@ -398,6 +405,7 @@ describe('services/media/previewAudio', () => {
         unmuteAsset: () => {
           order.push('unmute');
         },
+        setAssetSpeed: () => undefined,
       });
 
       controller.sync(makeDoc([makeTrack({ clips: [makeClip()] })]));
@@ -736,6 +744,7 @@ describe('services/media/previewAudio', () => {
         unmuteAsset: () => {
           throw new Error('不该被调用：图没建成');
         },
+        setAssetSpeed: () => undefined,
       });
       // 让 createGain 抛错，模拟 WebAudio 完全不可用
       const spy = vi.spyOn(MockAudioContext.prototype, 'createGain').mockImplementation(() => {
@@ -802,6 +811,7 @@ describe('services/media/previewAudio', () => {
       const controller = createPreviewAudio({
         resolveElement: () => new FakeMediaElement() as unknown as HTMLMediaElement,
         unmuteAsset: () => undefined,
+        setAssetSpeed: () => undefined,
       });
 
       await controller.unlock();
@@ -878,6 +888,111 @@ describe('services/media/previewAudio', () => {
   });
 
   // ------------------------------------------------------------------
+  // ------------------------------------------------------------------
+  describe('片段倍速（PRD FR-020③：preservesPitch + playbackRate）', () => {
+    it('resolveAssetSpeeds：播放头落在 clip 内 → 返回该 clip 的 speed', () => {
+      const doc = makeDoc([
+        makeTrack({ clips: [makeClip({ startMs: 0, durationMs: 2000, speed: 2 })] }),
+      ]);
+
+      expect(resolveAssetSpeeds(doc, 500)).toEqual(new Map([['asset_1', 2]]));
+      expect(resolveAssetSpeeds(doc, 1999)).toEqual(new Map([['asset_1', 2]]));
+    });
+
+    it('resolveAssetSpeeds：播放头在 clip 之外 → 空 map（元素待机）', () => {
+      const doc = makeDoc([
+        makeTrack({ clips: [makeClip({ startMs: 1000, durationMs: 1000, speed: 2 })] }),
+      ]);
+
+      expect(resolveAssetSpeeds(doc, 999).size).toBe(0);
+      expect(resolveAssetSpeeds(doc, 2000).size).toBe(0); // 右开区间
+    });
+
+    it('resolveAssetSpeeds：speed=1 的 clip 显式返回 1（不是缺省）', () => {
+      const doc = makeDoc([makeTrack({ clips: [makeClip({ speed: 1 })] })]);
+      expect(resolveAssetSpeeds(doc, 0)).toEqual(new Map([['asset_1', 1]]));
+    });
+
+    it('resolveAssetSpeeds：同一素材多 clip 重叠 → 取 zIndex 最大者（与视觉叠放一致）', () => {
+      const doc = makeDoc([
+        makeTrack({ id: 'a', clips: [makeClip({ id: 'c1', zIndex: 1, speed: 1.5 })] }),
+        makeTrack({
+          id: 'b',
+          order: 1,
+          clips: [makeClip({ id: 'c2', zIndex: 3, speed: 2.5 })],
+        }),
+      ]);
+
+      // zIndex 3 > 1 → 用 2.5，而不是轨道顺序在前的 1.5
+      expect(resolveAssetSpeeds(doc, 0)).toEqual(new Map([['asset_1', 2.5]]));
+    });
+
+    it('resolveAssetSpeeds：静音 / 音频轨隐藏的轨道不参与倍速决策', () => {
+      const doc = makeDoc([
+        makeTrack({
+          id: 'muted',
+          muted: true,
+          clips: [makeClip({ id: 'c1', zIndex: 5, speed: 4 })],
+        }),
+        makeTrack({
+          id: 'audio-hidden',
+          type: 'audio',
+          order: 1,
+          hidden: true,
+          clips: [makeClip({ id: 'c2', zIndex: 5, speed: 3 })],
+        }),
+        makeTrack({
+          id: 'ok',
+          order: 2,
+          clips: [makeClip({ id: 'c3', zIndex: 1, speed: 1.25 })],
+        }),
+      ]);
+
+      expect(resolveAssetSpeeds(doc, 0)).toEqual(new Map([['asset_1', 1.25]]));
+    });
+
+    it('setPosition 把倍速推到元素（且只在变化时推）', () => {
+      const doc = makeDoc([
+        makeTrack({ clips: [makeClip({ startMs: 0, durationMs: 2000, speed: 2 })] }),
+      ]);
+      const fixture = createFixture({ doc });
+
+      fixture.controller.setPosition(500);
+      fixture.controller.setPosition(600);
+      fixture.controller.setPosition(500);
+
+      // 三次调用只产生一次写入（其余命中缓存）
+      expect(fixture.speedCalls).toEqual([{ assetId: 'asset_1', speed: 2 }]);
+    });
+
+    it('播放头跨出 clip 边界时倍速归 1（元素仍长生命周期，不能留旧值）', () => {
+      const doc = makeDoc([
+        makeTrack({ clips: [makeClip({ startMs: 0, durationMs: 1000, speed: 2 })] }),
+      ]);
+      const fixture = createFixture({ doc });
+
+      fixture.controller.setPosition(500);
+      fixture.controller.setPosition(1500); // 出了 clip → 该素材归 1
+
+      // ⚠️ 必须归 1 而不是「不设」：元素是长生命周期的，播放头移出 clip 后
+      // 它可能仍在播（setPlaying 播放全部就绪元素），留旧倍速会跑错速度。
+      expect(fixture.speedCalls).toEqual([
+        { assetId: 'asset_1', speed: 2 },
+        { assetId: 'asset_1', speed: 1 },
+      ]);
+    });
+
+    it('dispose 后 setPosition 不再推倍速', () => {
+      const doc = makeDoc([makeTrack({ clips: [makeClip({ speed: 2 })] })]);
+      const fixture = createFixture({ doc });
+      fixture.controller.dispose();
+      const before = fixture.speedCalls.length;
+
+      expect(() => fixture.controller.setPosition(500)).not.toThrow();
+      expect(fixture.speedCalls.length).toBe(before);
+    });
+  });
+
   describe('播放 / 暂停 / seek', () => {
     it('暂停时所有 clipGain 归零（不留自动化尾巴）', () => {
       const doc = makeDoc([

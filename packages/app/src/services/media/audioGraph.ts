@@ -246,6 +246,7 @@ export function buildAudioGraph(
  *    ⇒ 拆掉挂载是**行为中性**的。
  *
  * 浏览器原生的 `preservesPitch` 就是 PRD FR-020③ 指定的机制，两方向都行、不截断。
+ * 它由 `videoPool.acquire` 在元素创建时一次性设置（见该处注释）。
  */
 function applySpeed(
   _context: BaseAudioContext,
@@ -254,21 +255,23 @@ function applySpeed(
   _preservePitch?: boolean,
   _workletModuleUrl?: string,
 ): AudioNode {
-  // 元素源（MediaElementAudioSourceNode）带 `mediaElement` 引用，能一并设置
-  // playbackRate 与 preservesPitch；导出侧的 GainNode 没有该字段 ⇒ 自动跳过。
+  // 元素源（MediaElementAudioSourceNode）带 `mediaElement` 引用。
+  //
+  // ⚠️ 这里**只**设 playbackRate，不再设 `preservesPitch` ——
+  // 保音高在元素**创建时**由 `videoPool.acquire` 一次性设置（那是元素生命
+  // 周期的唯一入口，能覆盖 speed=1 的 clip；而 `applySpeed` 只在
+  // `speed !== 1` 时才被调用）。两处都写同一个常量必然漂移。
+  //
+  // 注：`MediaElementAudioSourceNode` 自身**没有** `playbackRate` 这个
+  // AudioParam（那是 `AudioBufferSourceNode` 的），所以下面这步对元素源
+  // 是空操作 —— 预览侧真实的倍速由 `previewAudio.applyAssetSpeeds` 写到
+  // `element.playbackRate` 上。
   const elementSource = source as AudioNode & {
     playbackRate?: AudioParam;
-    mediaElement?: HTMLMediaElement;
   };
 
   if (elementSource.playbackRate) {
     elementSource.playbackRate.value = speed;
-  }
-
-  // PRD FR-020③：音频变速保持音高。显式写死，不依赖浏览器默认值。
-  const element = elementSource.mediaElement;
-  if (element) {
-    element.preservesPitch = true;
   }
 
   return source;

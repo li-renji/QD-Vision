@@ -103,6 +103,9 @@ export default tseslint.config(
       // Vitest 的 include 是 `/\.test\.(ts|tsx)$/`，那些是真测试，必须受检。
       '**/_*.spec.ts',
       '**/.*.spec.ts',
+      // 同上，点号开头的**一次性 .js 排查脚本**（`.probe*.js` / `.wa-*.js` …）。
+      // 与上面那条 `**/.*.mjs` 是同一个约定，只是当时漏了 `.js` 扩展名。
+      '**/.*.js',
     ],
   },
 

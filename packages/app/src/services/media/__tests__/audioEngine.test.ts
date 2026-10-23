@@ -556,17 +556,18 @@ describe('services/media/audioEngine', () => {
       expect(contextCalls.sources[0]?.playbackRate.value).toBe(2);
     });
 
-    it('speed !== 1 时显式设置元素的 preservesPitch = true（PRD FR-020③）', () => {
+    it('speed !== 1 时**不**再动 preservesPitch（已上移到 videoPool，单一入口）', () => {
       const engine = new AudioEngine();
       const element = makeElement();
-      // 先故意设成 false：验证本函数会**显式**写回 true，
-      // 而不是依赖浏览器默认值（默认值一旦被改就会静默变调，且现有测试抓不到）。
+      // 先故意设成 false：验证 applySpeed 不再覆盖它 ——
+      // 保音高的唯一写入点是 videoPool.acquire（元素创建时），
+      // 两处都写同一个常量必然漂移，已收敛到一处。
       element.preservesPitch = false;
       const doc = makeDoc([makeTrack({ clips: [makeClip({ speed: 1.5 })] })]);
 
       engine.buildGraph(doc, () => element);
 
-      expect(element.preservesPitch).toBe(true);
+      expect(element.preservesPitch).toBe(false);
       expect(contextCalls.sources[0]?.playbackRate.value).toBe(1.5);
     });
 

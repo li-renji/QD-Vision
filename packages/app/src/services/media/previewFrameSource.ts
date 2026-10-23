@@ -113,6 +113,14 @@ export interface PreviewFrameSource {
   unmute: (assetId: string) => void;
   /** 播放倍速变化（同步到 `video.playbackRate`）。 */
   setPlaybackRate: (rate: number) => void;
+  /**
+   * 设置某素材的片段倍速（`clip.speed`）。
+   *
+   * 实际 `playbackRate` = 全局倍速 × 本倍速。
+   * 同一素材被多个不同 speed 的 clip 引用时后写入者胜 —— 由调用方按播放头
+   * 选出当前应生效的 clip，见 `previewAudio.resolveAssetSpeeds`。
+   */
+  setAssetSpeed: (assetId: string, speed: number) => void;
   /** 订阅「异步帧已就绪」通知；返回取消订阅函数。 */
   onFrameReady: (listener: () => void) => () => void;
   /**
@@ -128,6 +136,12 @@ export interface PreviewFrameSource {
   onElementReady: (listener: (assetId: string) => void) => () => void;
   /** 已登记的素材数量（测试断言用）。 */
   readonly assetCount: number;
+  /**
+   * 已登记的素材 id 列表（诊断 / e2e 用）。
+   *
+   * 元素是游离的（不在 DOM 里），外部要枚举它们只能从这里拿 id。
+   */
+  getAssetIds: () => string[];
   /** 已就绪（可取帧）的素材数量（测试断言用）。 */
   readonly readyCount: number;
   /** 释放全部资源（重复调用安全）。 */
@@ -201,6 +215,10 @@ export function createPreviewFrameSource(
   const announcedReady = new Set<string>();
   /** 已释放标记：置位后所有异步回调都必须停止写缓存。 */
   let disposed = false;
+  /** 全局播放倍速（J/K/L 穿梭控制），默认 1。 */
+  let globalRate = 1;
+  /** assetId → 片段倍速（clip.speed）。 */
+  const assetSpeeds = new Map<string, number>();
 
   const notifyFrameReady = (): void => {
     for (const listener of frameReadyListeners) listener();
@@ -451,9 +469,30 @@ export function createPreviewFrameSource(
 
   const setPlaybackRate = (rate: number): void => {
     if (disposed) return;
+    globalRate = rate;
     for (const runtime of runtimes.values()) {
-      if (runtime.video) runtime.video.playbackRate = rate;
+      if (runtime.video) runtime.video.playbackRate = globalRate * (assetSpeeds.get(runtime.assetId) ?? 1);
     }
+  };
+
+  /**
+   * 设置某素材的**片段倍速**（`clip.speed`）。
+   *
+   * 元素的实际 `playbackRate` = {@link setPlaybackRate} 的全局倍速 × 本倍速。
+   * 二者必须相乘而不是覆盖：全局倍速来自 J/K/L 穿梭控制，片段倍速来自
+   * 时间线上每个 clip 自己的 `speed`，两者是**不同的维度**。
+   *
+   * ⚠️ 同一个素材可能被多个不同 `speed` 的 clip 引用（元素按 asset 池化），
+   * 此时**后写入者胜** —— 由调用方（`previewAudio`）按播放头选出当前应生效
+   * 的那一个 clip，见 `resolveAssetSpeeds`。多 clip 同时重叠出声时仍会有偏差，
+   * 这是池化设计的已知取舍。
+   */
+  const setAssetSpeed = (assetId: string, speed: number): void => {
+    if (disposed) return;
+    if (assetSpeeds.get(assetId) === speed) return;
+    assetSpeeds.set(assetId, speed);
+    const runtime = runtimes.get(assetId);
+    if (runtime?.video) runtime.video.playbackRate = globalRate * speed;
   };
 
   const onFrameReady = (listener: () => void): (() => void) => {
@@ -489,6 +528,7 @@ export function createPreviewFrameSource(
     }
     runtimes.clear();
     preparing.clear();
+    assetSpeeds.clear();
     announcedReady.clear();
     frameReadyListeners.clear();
     elementReadyListeners.clear();
@@ -503,11 +543,13 @@ export function createPreviewFrameSource(
     getElement,
     unmute,
     setPlaybackRate,
+    setAssetSpeed,
     onFrameReady,
     onElementReady,
     get assetCount(): number {
       return runtimes.size;
     },
+    getAssetIds: (): string[] => [...runtimes.keys()],
     get readyCount(): number {
       let count = 0;
       for (const runtime of runtimes.values()) {

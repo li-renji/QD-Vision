@@ -89,6 +89,17 @@ export function createVideoPool(options: VideoPoolOptions = {}): VideoPool {
     video.preload = 'auto';
     video.muted = defaultMuted;
     video.playsInline = true;
+    /**
+     * 浏览器自带的「变速保音高」（PRD FR-020③）。
+     *
+     * 相比 WSOLA worklet，这是**零成本**方案：两个方向都支持、不截断素材尾巴、
+     * 不需要额外解码。WSOLA worklet 只在浏览器不支持该属性时才作为兜底
+     * （目前预览侧已停用挂载，见 `audioGraph.applySpeed` 的说明）。
+     *
+     * ⚠️ 只在 `playbackRate` 之后设置才有意义 —— 它描述的是
+     * 「播放速率变化时是否补偿音高」，本身不改变速率。
+     */
+    video.preservesPitch = true;
     elements.set(assetId, video);
     currentTimes.set(assetId, 0);
     return video;

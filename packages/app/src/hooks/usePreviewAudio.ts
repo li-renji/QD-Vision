@@ -71,6 +71,9 @@ export function usePreviewAudio(frameSource: PreviewFrameSource): UsePreviewAudi
         },
         // 经由取帧器解除静音 —— 它才是元素池的持有者
         unmuteAsset: (assetId: string) => frameSource.unmute(assetId),
+        // 片段倍速 → 元素 playbackRate（配合 preservesPitch 保音高，PRD FR-020③）
+        setAssetSpeed: (assetId: string, speed: number) =>
+          frameSource.setAssetSpeed(assetId, speed),
       }),
     [frameSource],
   );
@@ -137,7 +140,7 @@ export function usePreviewAudio(frameSource: PreviewFrameSource): UsePreviewAudi
   }, [controller]);
 
   /**
-   * 把诊断快照挂到 `globalThis`，供 e2e 断言。
+   * 把诊断抓手挂到 `globalThis`，供 e2e 断言。
    *
    * ## 为什么需要它
    *
@@ -146,8 +149,11 @@ export function usePreviewAudio(frameSource: PreviewFrameSource): UsePreviewAudi
    * 因此 e2e 无法用 `page.locator('video')` 找到它们，也就没法直接断言
    * `video.muted === false`。
    *
-   * 于是暴露一个**只读**诊断函数：它是「真的有声音」唯一可客观断言的信号 ——
-   * AudioContext 是否 running、混音图里有几个 clip、有几个元素已解除静音。
+   * 于是暴露两个**只读**抓手：
+   * - `__clipcutPreviewAudio()`：接线状态快照（context 是否 running、图里有几个 clip…）；
+   * - `__clipcutPreviewAudioMaster()`：**主混音总线节点**。e2e 在它上面挂一个
+   *   `AnalyserNode`，就能读到**真实时域波形** —— 这是「真的有声音」唯一
+   *   客观、直接的证据（恒为 128 即静音）。
    *
    * 用 `globalThis` 而非 `window`：不触犯 ESLint 规则 A（禁止业务层直接
    * 访问 `window` 的文件 / 存储 API），且与浏览器 / Node 环境都兼容。
@@ -155,12 +161,48 @@ export function usePreviewAudio(frameSource: PreviewFrameSource): UsePreviewAudi
   useEffect(() => {
     const scope = globalThis as typeof globalThis & {
       __clipcutPreviewAudio?: () => PreviewAudioDiagnostics;
+      __clipcutPreviewAudioMaster?: () => GainNode | null;
+      __clipcutElementStates?: () => Array<{
+        assetId: string;
+        preservesPitch: boolean;
+        playbackRate: number;
+        muted: boolean;
+      }>;
     };
     scope.__clipcutPreviewAudio = controller.getDiagnostics;
+    scope.__clipcutPreviewAudioMaster = controller.getMasterGainNode;
+    /**
+     * 媒体元素的运行态（`preservesPitch` / `playbackRate` / `muted`）。
+     *
+     * e2e 用它断言 PRD FR-020③「音频变速保持音高」—— 元素是游离的
+     * （`document.createElement`，不在 DOM 里），`page.locator('video')`
+     * 找不到，只能经这里暴露。
+     */
+    scope.__clipcutElementStates = () => {
+      const states: Array<{
+        assetId: string;
+        preservesPitch: boolean;
+        playbackRate: number;
+        muted: boolean;
+      }> = [];
+      for (const assetId of frameSource.getAssetIds()) {
+        const element = frameSource.getElement(assetId);
+        if (!element) continue;
+        states.push({
+          assetId,
+          preservesPitch: element.preservesPitch,
+          playbackRate: element.playbackRate,
+          muted: element.muted,
+        });
+      }
+      return states;
+    };
     return () => {
       delete scope.__clipcutPreviewAudio;
+      delete scope.__clipcutPreviewAudioMaster;
+      delete scope.__clipcutElementStates;
     };
-  }, [controller]);
+  }, [controller, frameSource]);
 
   return {
     controller,

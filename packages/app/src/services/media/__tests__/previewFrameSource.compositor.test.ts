@@ -127,6 +127,7 @@ function createStubSource(bitmap: ImageBitmap | null): PreviewFrameSource {
     prime: async (): Promise<void> => undefined,
     setPlaying: (): void => undefined,
     setPlaybackRate: (): void => undefined,
+    setAssetSpeed: (): void => undefined,
     getElement: (): HTMLMediaElement | null => null,
     unmute: (): void => undefined,
     onElementReady: (listener: (assetId: string) => void): (() => void) => {
@@ -140,6 +141,7 @@ function createStubSource(bitmap: ImageBitmap | null): PreviewFrameSource {
     get assetCount(): number {
       return 0;
     },
+    getAssetIds: (): string[] => [],
     get readyCount(): number {
       return 0;
     },

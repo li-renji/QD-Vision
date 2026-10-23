@@ -279,6 +279,63 @@ describe('previewFrameSource 音频接线接口', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+  it('setAssetSpeed 与 setPlaybackRate 相乘而非互相覆盖（两个维度）', async () => {
+    const fixture = createFixture();
+    await fixture.source.ensureAsset(makeVideoAsset('a1'));
+    await flush();
+    const element = fixture.videos.get('a1') as unknown as FakeVideoElement;
+
+    // J/K/L 穿梭倍速 1.5，片段倍速 2 → 元素实际应是 3
+    fixture.source.setPlaybackRate(1.5);
+    expect(element.playbackRate).toBe(1.5);
+
+    fixture.source.setAssetSpeed('a1', 2);
+    expect(element.playbackRate).toBeCloseTo(3, 6);
+
+    // 再改穿梭倍速，片段倍速应继续生效
+    fixture.source.setPlaybackRate(1);
+    expect(element.playbackRate).toBeCloseTo(2, 6);
+  });
+
+  it('setAssetSpeed 相同值不重复写（每帧调用时不会刷 DOM）', async () => {
+    const fixture = createFixture();
+    await fixture.source.ensureAsset(makeVideoAsset('a1'));
+    await flush();
+    const element = fixture.videos.get('a1') as unknown as FakeVideoElement;
+    let writes = 0;
+    const descriptor = Object.getOwnPropertyDescriptor(element, 'playbackRate');
+    void descriptor;
+    // 用 setter 计数
+    let rate = 1;
+    Object.defineProperty(element, 'playbackRate', {
+      get: () => rate,
+      set: (value: number) => {
+        writes += 1;
+        rate = value;
+      },
+      configurable: true,
+    });
+
+    fixture.source.setAssetSpeed('a1', 2);
+    fixture.source.setAssetSpeed('a1', 2);
+    fixture.source.setAssetSpeed('a1', 2);
+    expect(writes).toBe(1);
+  });
+
+  it('setAssetSpeed 对未登记的素材是安全的空操作', () => {
+    const fixture = createFixture();
+    expect(() => fixture.source.setAssetSpeed('never_seen', 2)).not.toThrow();
+  });
+
+  it('dispose 之后 setAssetSpeed 不再写', async () => {
+    const fixture = createFixture();
+    await fixture.source.ensureAsset(makeVideoAsset('a1'));
+    await flush();
+    fixture.source.dispose();
+
+    expect(() => fixture.source.setAssetSpeed('a1', 2)).not.toThrow();
+  });
+
   it('dispose 之后 onElementReady 不再回调（异步流程已终止）', async () => {
     const fixture = createFixture();
     const listener = vi.fn();

@@ -40,7 +40,7 @@
 
 import type { Clip, ProjectDoc, Track } from '@clipcut/shared-types';
 import { AudioEngine } from './audioEngine.js';
-import { buildAudioGraph, type AudioGraph } from './audioGraph.js';
+import { buildAudioGraph, isTrackAudible, type AudioGraph } from './audioGraph.js';
 
 /** 默认主音量（`doc.settings.masterGain` 缺省时）。 */
 export const DEFAULT_MASTER_GAIN = 1;
@@ -99,6 +99,51 @@ export function resolveMasterGain(doc: ProjectDoc): number {
   const raw = (doc.settings as { masterGain?: unknown }).masterGain;
   if (typeof raw !== 'number' || !Number.isFinite(raw)) return DEFAULT_MASTER_GAIN;
   return Math.max(0, Math.min(MAX_MASTER_GAIN, raw));
+}
+
+/**
+ * 计算播放头处每个素材应由哪个**片段倍速**播放（`clip.speed`）。
+ *
+ * ## 为什么需要这个函数
+ *
+ * 预览侧变速用的是 `HTMLMediaElement.playbackRate`（配合 `preservesPitch`
+ * 做保音高，见 `videoPool.acquire`）。而 `playbackRate` 是**元素级**属性 ——
+ * 同一素材可能被多个不同 `speed` 的 clip 引用（元素按 asset 池化），
+ * 所以必须由播放头决定「当前这一刻该放哪个 speed」。
+ *
+ * ## 挑选规则
+ *
+ * 在 `timeMs` 处**活跃**的 clip 中，取 `zIndex` 最大者（再以轨道 order 兜底）——
+ * 与画布的视觉叠放顺序一致：用户看到的那个就是用户听到的那个。
+ * 静音 / 隐藏的轨道不参与（它们本来也不出声）。
+ *
+ * 播放头不在任何 clip 区间内的素材，倍速为 1（元素自身在待机，速率无所谓）。
+ *
+ * 纯函数：不碰 DOM / AudioContext，可直接单测。
+ */
+export function resolveAssetSpeeds(doc: ProjectDoc, timeMs: number): Map<string, number> {
+  /** assetId → 当前胜出的 clip（zIndex 最大者）。 */
+  const winners = new Map<string, { zIndex: number; speed: number }>();
+
+  for (const track of doc.tracks) {
+    // 静音 / 隐藏的轨道本来就不发声，不参与倍速决策
+    if (!isTrackAudible(track)) continue;
+    for (const clip of track.clips) {
+      if (clip.assetId === null) continue;
+      const active = timeMs >= clip.startMs && timeMs < clip.startMs + clip.durationMs;
+      if (!active) continue;
+      const current = winners.get(clip.assetId);
+      if (current === undefined || clip.zIndex > current.zIndex) {
+        winners.set(clip.assetId, { zIndex: clip.zIndex, speed: clip.speed });
+      }
+    }
+  }
+
+  const result = new Map<string, number>();
+  for (const [assetId, winner] of winners) {
+    result.set(assetId, winner.speed);
+  }
+  return result;
 }
 
 /** 预览音频诊断快照（供 e2e / 设置面板展示断言）。 */
@@ -179,6 +224,13 @@ export interface PreviewAudioOptions {
    * 否则它们会绕过混音图直连扬声器、互相叠加。
    */
   unmuteAsset: (assetId: string) => void;
+  /**
+   * 设置某素材的片段倍速（`clip.speed`）。
+   *
+   * 由控制器按播放头算出当前应生效的倍速后回调（见 {@link resolveAssetSpeeds}）——
+   * 控制器自己不持有媒体元素，因此通过这个回调转交。
+   */
+  setAssetSpeed: (assetId: string, speed: number) => void;
   /** 注入引擎（测试 / 多实例用）。 */
   engine?: AudioEngine;
 }
@@ -246,15 +298,27 @@ interface ClipBinding {
  */
 export function createPreviewAudio(options: PreviewAudioOptions): PreviewAudioController {
   const engine = options.engine ?? new AudioEngine();
-  const { resolveElement, unmuteAsset } = options;
+  const { resolveElement, unmuteAsset, setAssetSpeed } = options;
 
   let graph: AudioGraph | null = null;
   let doc: ProjectDoc | null = null;
   let currentTimeMs = 0;
+  /**
+   * 长生命周期的**主混音总线**。
+   *
+   * 混音图每次工程变化都会重建，但主总线**不跟着重建** ——
+   * ① 挂在它下游的观测节点（AnalyserNode / 电平表）在重建后仍然有效；
+   * ② 用户每改一次参数就重建主总线 → 重新 `connect(destination)` 会产生可听的「咔」声。
+   */
+  let masterGain: GainNode | null = null;
   /** clipId → { clip, track }。 */
   let bindings = new Map<string, ClipBinding>();
   /** 已解除 muted 的素材 id（诊断计数 + 幂等）。 */
   const unmutedAssetIds = new Set<string>();
+  /** 工程里被 clip 引用到的全部素材 id（倍速决策的范围）。 */
+  let referencedAssetIds = new Set<string>();
+  /** 上次已推给元素的倍速（用于只推送变化量）。 */
+  const lastAssetSpeeds = new Map<string, number>();
   /** 已建立 source node 的元素（诊断计数）。 */
   const routedElements = new Set<HTMLMediaElement>();
   let disposed = false;
@@ -292,9 +356,24 @@ export function createPreviewAudio(options: PreviewAudioOptions): PreviewAudioCo
     }
     bindings = nextBindings;
 
+    const nextAssetIds = new Set<string>();
+    for (const binding of nextBindings.values()) {
+      if (binding.clip.assetId !== null) nextAssetIds.add(binding.clip.assetId);
+    }
+    referencedAssetIds = nextAssetIds;
+
     let nextGraph: AudioGraph;
+    const context = engine.ensureContext();
     try {
-      nextGraph = buildAudioGraph(engine.ensureContext(), nextDoc, {
+      // 主总线只建一次，之后每次重建图都复用同一个节点
+      if (!masterGain) {
+        masterGain = context.createGain();
+        masterGain.gain.value = 1;
+        masterGain.connect(context.destination);
+      }
+
+      nextGraph = buildAudioGraph(context, nextDoc, {
+        masterGain,
         preservePitch: engine.isWorkletAvailable(),
         ...(engine.isWorkletAvailable() ? { workletModuleUrl: engine.workletModuleUrl } : {}),
         resolveSource: (clip, track) => {
@@ -332,12 +411,35 @@ export function createPreviewAudio(options: PreviewAudioOptions): PreviewAudioCo
     }
 
     applyGains();
+    applyAssetSpeeds();
   };
 
   const setPosition = (timeMs: number): void => {
     if (disposed) return;
     currentTimeMs = timeMs;
     applyGains();
+    applyAssetSpeeds();
+  };
+
+  /**
+   * 把当前播放头处的片段倍速推到媒体元素上。
+   *
+   * 每帧调用，但**只在数值变化时**才回调（见 `lastAssetSpeeds`）——
+   * 否则 60Hz 的 `setPosition` 会给每个元素每帧写一次 `playbackRate`。
+   *
+   * 另外：**没有活跃 clip 的素材要显式归 1**。元素是长生命周期的，
+   * 播放头移出 clip 后它可能仍在播（`previewFrameSource.setPlaying` 播放
+   * 全部就绪元素），留着旧的倍速会让这段「无人认领」的音频跑错速度。
+   */
+  const applyAssetSpeeds = (): void => {
+    if (!doc || disposed) return;
+    const speeds = resolveAssetSpeeds(doc, currentTimeMs);
+    for (const assetId of referencedAssetIds) {
+      const next = speeds.get(assetId) ?? 1;
+      if (lastAssetSpeeds.get(assetId) === next) continue;
+      lastAssetSpeeds.set(assetId, next);
+      setAssetSpeed(assetId, next);
+    }
   };
 
   const setPlaying = (playing: boolean): void => {
@@ -379,15 +481,13 @@ export function createPreviewAudio(options: PreviewAudioOptions): PreviewAudioCo
     return getClipGainNode(clipId)?.gain.value ?? null;
   };
 
-  const getMasterGainNode = (): GainNode | null => {
-    return graph?.masterGain ?? null;
-  };
+  const getMasterGainNode = (): GainNode | null => masterGain;
 
   const getDiagnostics = (): PreviewAudioDiagnostics => {
     const context = engine.getContext();
     return {
       contextState: context?.state ?? null,
-      masterGain: graph?.masterGain.gain.value ?? 0,
+      masterGain: masterGain?.gain.value ?? 0,
       trackBusCount: graph?.trackBuses.size ?? 0,
       clipCount: graph?.clipGains.size ?? 0,
       routedElementCount: routedElements.size,
@@ -405,6 +505,16 @@ export function createPreviewAudio(options: PreviewAudioOptions): PreviewAudioCo
     bindings = new Map();
     unmutedAssetIds.clear();
     routedElements.clear();
+    referencedAssetIds = new Set();
+    lastAssetSpeeds.clear();
+    if (masterGain) {
+      try {
+        masterGain.disconnect();
+      } catch {
+        // 已断开
+      }
+      masterGain = null;
+    }
     engine.dispose();
   };
 
