@@ -62,8 +62,8 @@ function createHarness(init?: {
     getTimeMs: () => timeMs,
     setTimeMs: (ms) => {
       timeMs = Math.max(0, ms);
-      // 与真实 store 一致：每次写入都重置基准
-      if (init?.rebaseOnWrite ?? true) clock.rebase();
+      // 与真实 store 的**内部通道**一致：时钟自身写回不触发 rebase
+      if (init?.rebaseOnWrite ?? false) clock.rebase();
     },
     getPlaybackRate: () => rate,
     getDurationMs: () => durationMs,
@@ -128,17 +128,17 @@ describe('state/playbackClock', () => {
   /**
    * 回归防护：曾被怀疑「时钟自己写入 → 触发 rebase → delta 被自己吃掉 → 卡死在第一帧」。
    *
-   * 本文件的harness 里 `setTimeMs` **与生产 store 完全一致地**调用了 `clock.rebase()`，
-   * 因此这条用例就是生产接线的精确复现。
+   * 本文件的 harness 默认**不** rebase（与生产 store 的内部通道一致）。
    *
-   * 为什么 rebase 是安全的：`rebase()` 记录的是一对**自洽**的坐标
+   * 关于「rebase 会不会吃掉 delta」的准确结论：`rebase()` 记录的是一对自洽坐标
    * `(anchorTimeMs, anchorPerfMs) = (刚写入的时间, 写入那一刻的真实时间)`。
    * 下一帧 rAF 触发时 `now()` 已经比写入时刻**晚了整整一帧**（约 16ms），
-   * 所以 `deltaMs = now() - anchorPerfMs ≈ 16`，而不是 0。
-   * 只有当两次 rAF 落在**同一毫秒**时delta 才会为 0 —— 那种情况下时间本就不该推进。
+   * 所以 delta ≈ 16ms 而不是 0 —— rebase 本身不会造成冻结。
+   * 但时钟既然已经自持基准，就不需要 rebase 参与，故生产走 `rebase:false`，
+   * 让「谁负责维护锚点」这件事只有一处。
    */
-  it('时钟自身写入触发的 rebase 不会吃掉 delta（逐帧严格递增，不会卡在第一帧）', () => {
-    const h = createHarness({ durationMs: 600_000 });
+  it('时钟自持基准（写入路径不 rebase）：逐帧严格递增，不会卡在第一帧', () => {
+    const h = createHarness({ durationMs: 600_000, rebaseOnWrite: false });
     h.clock.start();
 
     const samples: number[] = [];
@@ -147,7 +147,7 @@ describe('state/playbackClock', () => {
       samples.push(h.timeMs);
     }
 
-    // 若 rebase 真的吃掉 delta，第二帧起就会永远停在 16
+    // 若锚点没推进，第二帧起就会永远停在 16
     for (let index = 1; index < samples.length; index += 1) {
       expect(samples[index]).toBeGreaterThan(samples[index - 1] ?? 0);
     }
@@ -269,6 +269,55 @@ describe('state/playbackClock', () => {
     expect(h.clock.running).toBe(true);
     expect(h.stoppedCount).toBe(0);
     expect(h.timeMs).toBeGreaterThan(0);
+  });
+
+  /**
+   * 空工程场景（durationMs = 0）。
+   *
+   * 这是用户新建工程后第一次点播放时会走的路径 —— 曾经被怀疑在这里
+   * 时钟会冻结。断言两件事：
+   * 1. `hitEnd` 因`durationMs > 0` 为假而**不触发**，时钟不会自停；
+   * 2. 时间仍按真实经过时间推进，且**严格大于一帧**（排除「卡在 16ms」）。
+   */
+  it('空工程（durationMs=0）：时钟照常推进，且推进量与真实时间成正比', () => {
+    const h = createHarness({ durationMs: 0 });
+    h.clock.start();
+
+    // 60fps × 60 帧 = 1000ms 真实时间
+    h.advanceFrames(60, 1000 / 60);
+
+    // ±20% 容差：任何「delta 被吃掉」的回归都会立刻暴露
+    const expected = 1000;
+    expect(h.timeMs).toBeGreaterThan(expected * 0.8);
+    expect(h.timeMs).toBeLessThan(expected * 1.2);
+    // 关键：必须远大于第一帧（16ms），排除冻结
+    expect(h.timeMs).toBeGreaterThan(100);
+    expect(h.clock.running).toBe(true);
+  });
+
+  it('空工程下推进量随时间线性增长（累计 1s / 3s / 6s 真实时间）', () => {
+    const h = createHarness({ durationMs: 0 });
+    h.clock.start();
+
+    /** 追加推进 `seconds` 秒真实时间，返回累计的 timeMs。 */
+    const at = (seconds: number): number => {
+      h.advanceFrames(Math.round(60 * seconds), 1000 / 60);
+      return h.timeMs;
+    };
+
+    // 注意是**累计**值：1s → 1000ms；再推进 2s → 累计 3000ms；再 3s → 累计 6000ms
+    const t1 = at(1);
+    const t2 = at(2);
+    const t3 = at(3);
+
+    for (const [actual, expected] of [
+      [t1, 1000],
+      [t2, 3000],
+      [t3, 6000],
+    ] as const) {
+      expect(actual).toBeGreaterThan(expected * 0.8);
+      expect(actual).toBeLessThan(expected * 1.2);
+    }
   });
 
   it('seek 后时钟从新位置继续，不会把用户拖到的位置覆盖掉', () => {

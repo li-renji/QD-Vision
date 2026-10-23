@@ -155,6 +155,7 @@ export const enUS: Record<string, string> = {
   'preview.aspect': 'Ratio',
   'preview.noFrame': 'Nothing to show at the current time',
   'preview.speed': 'Speed {value}x',
+  'preview.emptyTimeline': 'Add media to the timeline first',
 
   // Inspector
   'inspector.title': 'Properties',

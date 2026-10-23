@@ -83,10 +83,18 @@ export function TopToolbar({
           icon={<Icon name="step-start" size={14} />}
         />
         <IconButton
-          label={isPlaying ? t('toolbar.pause') : t('toolbar.play')}
+          label={
+            durationMs <= 0
+              ? t('preview.emptyTimeline')
+              : isPlaying
+                ? t('toolbar.pause')
+                : t('toolbar.play')
+          }
           onClick={() => usePlaybackStore.getState().togglePlay()}
           icon={<Icon name={isPlaying ? 'pause' : 'play'} size={14} />}
           active={isPlaying}
+          // 空工程禁用播放（与 PreviewControls 的传输控件保持一致）
+          disabled={durationMs <= 0}
         />
         <IconButton
           label={t('toolbar.nextFrame')}

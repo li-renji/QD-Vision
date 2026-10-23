@@ -154,6 +154,7 @@ export const zhCN: Record<string, string> = {
   'preview.aspect': '比例',
   'preview.noFrame': '当前时间没有可显示的画面',
   'preview.speed': '速度 {value}x',
+  'preview.emptyTimeline': '请先添加素材到时间线',
 
   // 属性面板
   'inspector.title': '属性',

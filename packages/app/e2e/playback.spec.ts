@@ -225,4 +225,45 @@ test.describe('播放链路（播放头 + 预览画面）', () => {
       .poll(async () => page.locator('text=e2e-clip.webm').count(), { timeout: 10_000 })
       .toBe(1);
   });
+
+  /**
+   * 空工程禁用播放（剪辑软件惯例）。
+   *
+   * 背景：新建工程后时间线是空的，用户第一次点播放会「按了没反应」，
+   * 从而误以为功能坏了。这里断言按钮置灰且给出提示文案。
+   *
+   * 注意：底层时钟在空工程下**依然能正常推进**（由 playbackClock 的空工程
+   * 单测覆盖），UI 禁用只是不给入口，两者互不依赖。
+   */
+  test('空工程时播放按钮禁用并提示「先添加素材」，加入 clip 后恢复可用', async ({ page }) => {
+    await openFreshProject(page);
+
+    // 文案随 locale 变化（zh: 播放/请先添加素材到时间线；en: Play/Add media...），
+    // 因此用中英双语正则定位，避免依赖浏览器语言。
+    const EMPTY_HINT = /请先添加素材到时间线|Add media to the timeline first/;
+    const PLAY_LIKE = /播放|暂停|Play|Pause|请先添加素材到时间线|Add media to the timeline first/;
+    const playButtons = page.locator('button[aria-label*="播放"], button[aria-label*="暂停"], button[aria-label*="Play"], button[aria-label*="Pause"], button[aria-label*="素材"], button[aria-label*="media"]');
+    // 顶栏与预览控件各有一个播放按钮，两者都应禁用
+    await expect(playButtons).toHaveCount(2);
+    for (let i = 0; i < 2; i += 1) {
+      await expect(playButtons.nth(i)).toBeDisabled();
+      await expect(playButtons.nth(i)).toHaveAttribute('aria-label', EMPTY_HINT);
+    }
+
+    // 强制点击也不应开始播放（时间码保持 0）
+    await playButtons.first().click({ force: true });
+    await page.waitForTimeout(800);
+    expect(await readTimecode(page)).toBe('00:00:00:00');
+
+    // 加入 clip 后恢复可用
+    await importGeneratedClip(page);
+    await page.locator('text=e2e-clip.webm').first().dblclick();
+    await page.waitForTimeout(1000);
+
+    await expect(playButtons).toHaveCount(2);
+    for (let i = 0; i < 2; i += 1) {
+      await expect(playButtons.nth(i)).toBeEnabled();
+      await expect(playButtons.nth(i)).toHaveAttribute('aria-label', PLAY_LIKE);
+    }
+  });
 });

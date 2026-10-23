@@ -20,6 +20,22 @@ export function PreviewControls(): JSX.Element {
   const setPlaybackRate = usePlaybackStore((state) => state.setPlaybackRate);
   const durationMs = useProjectStore((state) => state.doc.meta.durationMs);
 
+  /**
+   * 空工程（时间线上没有任何内容）时禁用播放。
+   *
+   * 剪辑软件惯例（剪映 / Premiere）：空工程播放按钮置灰。
+   * 这样用户新建工程后点播放不会「按了没反应」，也不会误以为功能坏了。
+   *
+   * 注意：底层时钟在空工程下**依然能正常推进**（见 playbackClock 的空工程用例），
+   * 这里只是 UI 层不给入口，两者不互相依赖。
+   */
+  const isTimelineEmpty = durationMs <= 0;
+  const playLabel = isTimelineEmpty
+    ? t('preview.emptyTimeline')
+    : isPlaying
+      ? t('toolbar.pause')
+      : t('toolbar.play');
+
   return (
     <div className="flex h-10 shrink-0 items-center justify-center gap-1 border-t border-[var(--cc-border)] bg-[var(--cc-bg-panel)]">
       <IconButton
@@ -33,8 +49,9 @@ export function PreviewControls(): JSX.Element {
         icon={<Icon name="step-start" size={14} />}
       />
       <IconButton
-        label={isPlaying ? t('toolbar.pause') : t('toolbar.play')}
+        label={playLabel}
         active={isPlaying}
+        disabled={isTimelineEmpty}
         onClick={() => usePlaybackStore.getState().togglePlay()}
         icon={<Icon name={isPlaying ? 'pause' : 'play'} size={14} />}
       />

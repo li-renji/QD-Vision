@@ -39,7 +39,15 @@ export interface PlaybackState {
   /** 逐帧步进精度（毫秒），由画布 fps 决定 */
   frameDurationMs: number;
 
-  setCurrentTime: (ms: number) => void;
+  /**
+   * 写回时间线位置。
+   *
+   * @param ms 目标时间（毫秒，负值按 0 处理）
+   * @param options `rebase: false` 表示**不要**重置时钟基准 ——
+   *   仅供播放时钟自身写回使用。外部调用（seek / 逐帧 / 变速）必须走默认
+   *   的 `rebase: true`，否则时钟会用旧锚点覆盖用户刚操作到的位置。
+   */
+  setCurrentTime: (ms: number, options?: SetCurrentTimeOptions) => void;
   setIsPlaying: (playing: boolean) => void;
   setPlaybackRate: (rate: number) => void;
   setFrameDuration: (ms: number) => void;
@@ -57,6 +65,19 @@ export interface PlaybackState {
 
 /** 命令式回调集合（不参与 React 渲染）。 */
 const frameListeners = new Set<(timeMs: number) => void>();
+
+/** `setCurrentTime` 的可选参数。 */
+export interface SetCurrentTimeOptions {
+  /**
+   * 是否重置时钟基准。默认 `true`。
+   *
+   * 播放时钟**自身**每帧写回时传 `false`：此时 `playbackClock.tick()` 已经
+   * 自行把锚点推进到了正确位置，再 `rebase()` 会把 `anchorPerfMs` 重置为
+   * 「写回那一刻」，使下一帧的 delta 变成两次 rAF 之间的真实间隔 —— 结果正确，
+   * 但会让「自持基准」与「无条件 rebase」互相掩盖，掩盖真正的时序问题。
+   */
+  rebase?: boolean;
+}
 
 /**
  * 解析时间线总时长（毫秒）。
@@ -83,12 +104,12 @@ export const usePlaybackStore = create<PlaybackState>()((set, get) => ({
   playbackRate: 1,
   frameDurationMs: 1000 / 30,
 
-  setCurrentTime: (ms) => {
+  setCurrentTime: (ms, options) => {
     const clamped = Math.max(0, ms);
     set({ currentTimeMs: clamped });
-    // 任何一次外部写入（seek / 逐帧 / 时钟自身）都要重置时钟基准，
-    // 否则时钟会用旧锚点把用户刚拖到的位置覆盖掉。
-    clock.rebase();
+    // 外部写入（seek / 逐帧 / 变速）必须重置基准，否则时钟会用旧锚点
+    // 把用户刚拖到的位置覆盖掉。时钟自身写回传 rebase:false 跳过。
+    if (options?.rebase !== false) clock.rebase();
     for (const listener of frameListeners) listener(clamped);
   },
 
@@ -159,7 +180,8 @@ export const usePlaybackStore = create<PlaybackState>()((set, get) => ({
 const clock: PlaybackClock = createPlaybackClock({
   getTimeMs: () => usePlaybackStore.getState().currentTimeMs,
   setTimeMs: (ms) => {
-    usePlaybackStore.getState().setCurrentTime(ms);
+    // 走**不触发 rebase** 的内部通道：tick() 已自行维护锚点
+    usePlaybackStore.getState().setCurrentTime(ms, { rebase: false });
   },
   getPlaybackRate: () => usePlaybackStore.getState().playbackRate,
   getDurationMs: currentDurationMs,
