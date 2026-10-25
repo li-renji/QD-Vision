@@ -38,6 +38,9 @@ Thumbs.db
 packages/app/e2e/_*.spec.ts
 packages/app/e2e/_*.config.ts
 
+# WorkBuddy 项目本地数据（记忆/笔记等，不进仓库）
+.workbuddy/
+
 # Vitest JSON 报告（测试产物）
 test-results.json
 packages/*/test-results.json

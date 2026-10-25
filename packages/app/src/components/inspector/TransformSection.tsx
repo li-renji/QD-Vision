@@ -6,7 +6,7 @@
 
 import { useTranslation } from '../../i18n/index.js';
 import { usePrimarySelectedClip } from '../../state/selectors.js';
-import { setClipProperty } from '../../state/actions.js';
+import { setClipPropertyForSelected } from '../../state/actions.js';
 import { NumberField } from '../common/NumberField.js';
 import { Slider } from '../common/Slider.js';
 import { Select } from '../common/Select.js';
@@ -21,8 +21,9 @@ export function TransformSection(): JSX.Element | null {
 
   if (!clip) return null;
 
+  // 作用于**全部选中** clip（含整轨选中）——属性编辑即可落到选中轨道的片段上。
   const set = (path: string, value: unknown): void => {
-    setClipProperty(clip.id, path, value);
+    setClipPropertyForSelected(path, value);
   };
 
   return (

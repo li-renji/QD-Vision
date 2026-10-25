@@ -21,11 +21,13 @@ import { computeProjectDuration } from '../../domain/project/duration.js';
 import { buildExportPlan } from '../../domain/export/exportPlan.js';
 import { useHistoryStore } from '../historyStore.js';
 import { useProjectStore } from '../projectStore.js';
-import { addClip, deleteClip, setClipProperty } from '../actions.js';
+import { addClip, addTrack, deleteClip, setClipProperty } from '../actions.js';
 
-/** 重置到空白工程。 */
+/** 重置到空白工程（不再有预设轨道——按需建轨后手动加一条视频轨供测试）。 */
 function reset(): void {
   useProjectStore.getState().setDoc(createEmptyProject('测试'), { markDirty: false });
+  // 取消预设轨道后，测试显式建一条视频轨；历史随后清空，保证 undo/redo 只针对 clip 操作。
+  addTrack({ type: 'video', name: '视频轨 1' });
   useHistoryStore.getState().reset();
 }
 

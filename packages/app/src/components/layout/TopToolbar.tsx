@@ -10,6 +10,7 @@ import { useTranslation } from '../../i18n/index.js';
 import { useProjectStore } from '../../state/projectStore.js';
 import { useHistoryStore } from '../../state/historyStore.js';
 import { usePlaybackStore } from '../../state/playbackStore.js';
+import { useUiStore } from '../../state/uiStore.js';
 import { unlockPreviewAudio } from '../../services/media/previewAudio.js';
 import { redo, undo } from '../../state/actions.js';
 import { formatTimecode } from '@clipcut/shared-types';
@@ -40,6 +41,8 @@ export function TopToolbar({
   const isPlaying = usePlaybackStore((state) => state.isPlaying);
   const pastCount = useHistoryStore((state) => state.past.length);
   const futureCount = useHistoryStore((state) => state.future.length);
+  const snapEnabled = useUiStore((state) => state.snapEnabled);
+  const setSnapEnabled = useUiStore((state) => state.setSnapEnabled);
 
   // 时间码以 10Hz 节流更新，避免 60Hz 重渲染
   const [timecode, setTimecode] = useState('00:00:00:00');
@@ -112,6 +115,13 @@ export function TopToolbar({
           label={t('toolbar.toEnd')}
           onClick={() => usePlaybackStore.getState().seekToEnd(durationMs)}
           icon={<Icon name="skip-end" size={14} />}
+        />
+        {/* 吸附开关：拖素材入轨时，同轨片段自动对齐、首条轨第一段对齐 0s。 */}
+        <IconButton
+          label={snapEnabled ? t('toolbar.snapOn') : t('toolbar.snapOff')}
+          onClick={() => setSnapEnabled(!snapEnabled)}
+          icon={<Icon name="magnet" size={14} />}
+          active={snapEnabled}
         />
       </div>
 

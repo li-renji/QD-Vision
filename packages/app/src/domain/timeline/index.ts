@@ -60,6 +60,7 @@ export {
   DEFAULT_SNAP_THRESHOLD_PX,
   collectSecondTicks,
   collectSnapCandidates,
+  computeDropStartMs,
   findSnap,
   type SnapCandidate,
   type SnapResult,

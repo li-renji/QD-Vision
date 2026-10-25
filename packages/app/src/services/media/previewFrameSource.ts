@@ -397,21 +397,35 @@ export function createPreviewFrameSource(
       return runtime.bitmap;
     }
 
-    // 缓存足够新 → 直接返回
-    if (runtime.bitmap && Math.abs(runtime.bitmapMs - sourceMs) <= AV_SYNC_TOLERANCE_MS) {
-      return runtime.bitmap;
-    }
-
-    // 播放态：视频元素自己在播，只在漂移超阈值时纠正（每帧 seek 会卡顿）
+    // 播放态：直接返回**正在播放的 <video> 元素**，由 `compositor` 用
+    // `drawImage(video)` 同步绘制「当前真实帧」。这样预览画面与视频解码帧
+    // 一一对应，彻底消除异步 `createImageBitmap` 缓存落后造成的「重复帧 /
+    // 掉帧」观感。仅在漂移超过 2× 容差时才纠正 `currentTime`（避免无谓 seek）。
     if (runtime.video && runtime.playing) {
       const driftMs = Math.abs(runtime.video.currentTime * 1000 - sourceMs);
       if (driftMs > AV_SYNC_TOLERANCE_MS * 2) {
         runtime.video.currentTime = Math.max(0, sourceMs / 1000);
       }
+      return runtime.video;
     }
 
-    void capture(runtime, sourceMs);
-    // 关键：先返回上一帧，让画面「有内容」，新帧到位后再重绘
+    // 暂停态 / 图片：元素已对齐到目标源时间就直接画实时画面；否则先纠正
+    // 位置（seek），并用最近一次抓取的位图兜底，待 seek 完成后再重绘。
+    const element = runtime.video ?? runtime.image;
+    if (element) {
+      if (runtime.video) {
+        const driftMs = Math.abs(runtime.video.currentTime * 1000 - sourceMs);
+        if (driftMs <= AV_SYNC_TOLERANCE_MS) return runtime.video;
+        runtime.video.currentTime = Math.max(0, sourceMs / 1000);
+      } else {
+        // 图片：实时元素始终对齐，直接返回
+        return runtime.image;
+      }
+      // 需要 seek：触发一次抓取，返回最近位图兜底
+      void capture(runtime, sourceMs);
+      return runtime.bitmap;
+    }
+
     return runtime.bitmap;
   };
 

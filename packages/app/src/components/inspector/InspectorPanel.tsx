@@ -41,13 +41,13 @@ export function InspectorPanel({ onRelink }: InspectorPanelProps): JSX.Element {
           <SubtitleSection />
         </>
       ) : (
-        <>
-          <p className="px-3 py-2 text-[11px] text-[var(--cc-fg-muted)]">
-            {t('inspector.noSelection')}
-          </p>
-          <ExportSection />
-        </>
+        <p className="px-3 py-2 text-[11px] text-[var(--cc-fg-muted)]">
+          {t('inspector.noSelection')}
+        </p>
       )}
+
+      {/* 导出设置**始终可见**：选中轨道 / 片段时也不能挡住导出入口。 */}
+      <ExportSection />
     </div>
   );
 }

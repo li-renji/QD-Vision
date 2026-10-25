@@ -24,7 +24,6 @@ export interface TimelineContextMenuProps {
 export function TimelineContextMenu({ clip }: TimelineContextMenuProps): JSX.Element {
   const { t } = useTranslation();
   const doc = useProjectStore((state) => state.doc);
-  const currentTimeMs = usePlaybackStore((state) => state.currentTimeMs);
 
   const run = (fn: () => { ok: boolean; error: string | null }): void => {
     const result = fn();
@@ -38,7 +37,7 @@ export function TimelineContextMenu({ clip }: TimelineContextMenuProps): JSX.Ele
       <ContextMenuItem
         label={t('timeline.split')}
         shortcut="S"
-        onSelect={() => run(() => splitClip(clip.id, currentTimeMs))}
+        onSelect={() => run(() => splitClip(clip.id, usePlaybackStore.getState().currentTimeMs))}
       />
       <ContextMenuItem
         label={t('timeline.duplicate')}

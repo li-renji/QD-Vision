@@ -7,7 +7,7 @@ import { useTranslation } from '../../i18n/index.js';
 import { useProjectStore } from '../../state/projectStore.js';
 import { useUiStore } from '../../state/uiStore.js';
 import { usePlaybackStore } from '../../state/playbackStore.js';
-import { addClip, removeAsset, updateAsset } from '../../state/actions.js';
+import { addClipToAutoTrack, removeAsset, updateAsset } from '../../state/actions.js';
 import { importFiles } from '../../services/media/assetService.js';
 import { getPlatformBridge } from '../../platform/index.js';
 import { FILE_ACCEPT } from '../../platform/fileTypes.js';
@@ -29,11 +29,9 @@ import type { Asset } from '@clipcut/shared-types';
 export function MediaPanel(): JSX.Element {
   const { t } = useTranslation();
   const assets = useProjectStore((state) => state.doc.assets);
-  const tracks = useProjectStore((state) => state.doc.tracks);
   const filter = useUiStore((state) => state.mediaFilter);
   const view = useUiStore((state) => state.mediaView);
   const selectedTrackId = useUiStore((state) => state.selectedTrackId);
-  const currentTimeMs = usePlaybackStore((state) => state.currentTimeMs);
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [sort, setSort] = useState<MediaSort>('importedAt');
@@ -85,21 +83,12 @@ export function MediaPanel(): JSX.Element {
   };
 
   const handleOpen = (assetId: string): void => {
-    // 双击 → 追加到时间线播放头处
+    // 双击 → 追加到时间线播放头处（按需建轨：没有兼容轨道时自动创建一条）
     const asset = assets[assetId];
     if (!asset) return;
-    const track = tracks.find(
-      (item) =>
-        (item.type === 'audio' && asset.type === 'audio') ||
-        (item.type === 'video' && asset.type !== 'audio'),
-    );
-    if (!track) {
-      toast(t('timeline.crossTrackDenied', { type: asset.type, trackType: '—' }), 'warning');
-      return;
-    }
-    const result = addClip({
+    const currentTimeMs = usePlaybackStore.getState().currentTimeMs;
+    const result = addClipToAutoTrack({
       assetId,
-      trackId: track.id,
       startMs: currentTimeMs,
       inMs: 0,
       ...(asset.durationMs > 0 ? { outMs: asset.durationMs } : {}),

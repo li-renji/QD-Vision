@@ -5,14 +5,21 @@
  * 组件层只允许调用本文件导出的动作，不得直接改写 `projectStore.doc`。
  */
 
-import type { Asset, ClipTextProps, SubtitleStyle } from '@clipcut/shared-types';
+import type {
+  Asset,
+  ClipTextProps,
+  ClipTransform,
+  SubtitleStyle,
+} from '@clipcut/shared-types';
 import {
   addAsset as domainAddAsset,
   addClip as domainAddClip,
+  addClipToAutoTrack as domainAddClipToAutoTrack,
   addSubtitleCue as domainAddSubtitleCue,
   addTextClip as domainAddTextClip,
   addTrack as domainAddTrack,
   deleteClip as domainDeleteClip,
+  reorderTrack as domainReorderTrack,
   duplicateClip as domainDuplicateClip,
   moveClip as domainMoveClip,
   removeAsset as domainRemoveAsset,
@@ -22,6 +29,7 @@ import {
   setAiSettings as domainSetAiSettings,
   setCanvasSettings as domainSetCanvasSettings,
   setClipProperty as domainSetClipProperty,
+  setClipTransform as domainSetClipTransform,
   setClipSpeed as domainSetClipSpeed,
   setExportSettings as domainSetExportSettings,
   setSubtitleCues as domainSetSubtitleCues,
@@ -32,6 +40,7 @@ import {
   updateAsset as domainUpdateAsset,
   updateSubtitleCue as domainUpdateSubtitleCue,
   type AddClipInput,
+  type AddClipToAutoTrackInput,
   type AddTrackInput,
 } from '../domain/timeline/operations.js';
 import { useProjectStore } from './projectStore.js';
@@ -75,6 +84,17 @@ function apply(
 /** 新增 clip。 */
 export function addClip(input: AddClipInput): ActionResult<string | null> {
   return run(() => apply((ctx) => domainAddClip(ctx, input)).selectedClipId ?? null);
+}
+
+/**
+ * 新增 clip，并在没有兼容轨道时自动创建一条（按需建轨）。
+ *
+ * 用于「双击素材 / 拖素材到空时间线」——不再强制预设轨道。
+ */
+export function addClipToAutoTrack(
+  input: AddClipToAutoTrackInput,
+): ActionResult<string | null> {
+  return run(() => apply((ctx) => domainAddClipToAutoTrack(ctx, input)).selectedClipId ?? null);
 }
 
 /** 新建文字片段。 */
@@ -190,6 +210,22 @@ export function setClipPropertyForSelected(path: string, value: unknown): Action
   return { ok: count > 0, error: count > 0 ? null : '没有选中的 clip', value: count };
 }
 
+/**
+ * 批量设置选中 clip 的变换（位置 / 缩放 / 旋转等）。
+ *
+ * 画布上的手柄拖拽会调用它，按下/抬起构成一个手势 → 一次历史记录。
+ * 注意：这里**每个选中 clip 各自产生一条历史记录**（保持「一次动作一条记录」铁律），
+ * 而不是把所有 clip 合并成一条——这样既能在撤销时分别回滚，也避免单条 patch 跨多 clip 的复杂度。
+ */
+export function setClipTransformForSelected(patch: Partial<ClipTransform>): ActionResult<number> {
+  const { selectedClipIds } = useUiStore.getState();
+  let count = 0;
+  for (const clipId of selectedClipIds) {
+    if (apply((ctx) => domainSetClipTransform(ctx, clipId, patch)).selectedClipId) count += 1;
+  }
+  return { ok: count > 0, error: count > 0 ? null : '没有选中的 clip', value: count };
+}
+
 /** 设置文字样式（逐项写入，保证一次操作一条历史记录）。 */
 export function setTextProps(clipId: string, props: Partial<ClipTextProps>): ActionResult {
   let last: ActionResult = { ok: true, error: null, value: null };
@@ -198,6 +234,16 @@ export function setTextProps(clipId: string, props: Partial<ClipTextProps>): Act
     if (!last.ok) break;
   }
   return last;
+}
+
+/** 批量设置**选中 clip** 的文字样式（作用于整条选中轨道的全部文字片段）。 */
+export function setTextPropsForSelected(props: Partial<ClipTextProps>): ActionResult<number> {
+  const { selectedClipIds } = useUiStore.getState();
+  let count = 0;
+  for (const clipId of selectedClipIds) {
+    if (setTextProps(clipId, props).ok) count += 1;
+  }
+  return { ok: count > 0, error: count > 0 ? null : '没有选中的 clip', value: count };
 }
 
 // ============ 轨道操作 ============
@@ -210,6 +256,11 @@ export function addTrack(input: AddTrackInput): ActionResult {
 /** 删除轨道。 */
 export function removeTrack(trackId: string): ActionResult {
   return run(() => apply((ctx) => domainRemoveTrack(ctx, trackId)));
+}
+
+/** 轨道排序：上移 / 下移（与相邻轨道交换 `order`）。 */
+export function reorderTrack(trackId: string, direction: 'up' | 'down'): ActionResult {
+  return run(() => apply((ctx) => domainReorderTrack(ctx, trackId, direction)));
 }
 
 /** 设置轨道标志。 */

@@ -46,6 +46,17 @@ async function enterEditor(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: /素材库|Media/ })).toBeVisible();
 }
 
+/**
+ * 新增一条视频轨。
+ *
+ * ⚠️ 新工程**不再有预设轨道**（按需建轨），所以需要轨道的用例必须自己建一条。
+ */
+async function addVideoTrack(page: Page): Promise<void> {
+  await page.getByRole('button', { name: /新增轨道|Add track/ }).first().click();
+  await page.getByRole('menuitem', { name: /视频轨|Video track/ }).first().click();
+  await expect(page.locator('[data-track-row]').first()).toBeVisible();
+}
+
 test.describe('品牌与排版回归', () => {
   test('应用标题与顶栏品牌名为 QD视界', async ({ page }) => {
     await gotoApp(page);
@@ -87,6 +98,7 @@ test.describe('品牌与排版回归', () => {
 
   test('轨道头与轨道行逐个对齐（top 与 height 同时相等）', async ({ page }) => {
     await enterEditor(page);
+    await addVideoTrack(page);
 
     const pairs = await page.evaluate(() => {
       // 轨道头**列容器**也带 w-trackhead 类，必须取它的直接子元素，否则下标错位一位
@@ -118,6 +130,7 @@ test.describe('品牌与排版回归', () => {
 
   test('轨道名保持单行且有可读宽度（不被图标挤成竖条）', async ({ page }) => {
     await enterEditor(page);
+    await addVideoTrack(page);
 
     const names = await page.evaluate(() => {
       const rail = document.querySelector('.w-trackhead > .w-trackhead')?.parentElement;

@@ -2,11 +2,11 @@
  * 单轨道行：承载 clip，绝对定位，接收虚拟化窗口。
  */
 
-import { memo } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import type { Asset, Track } from '@clipcut/shared-types';
 import { useUiStore } from '../../state/uiStore.js';
+import { registerTrackElement, unregisterTrackElement } from '../../hooks/useClipDrag.js';
 import { ClipView } from './ClipView.js';
-import { ASSET_DRAG_TYPE } from '../media/MediaCard.js';
 
 /** TrackRow 属性。 */
 export interface TrackRowProps {
@@ -19,12 +19,13 @@ export interface TrackRowProps {
   windowEndMs: number;
   onSelectClip: (clipId: string, additive: boolean) => void;
   onSelectTrack: (trackId: string) => void;
-  /** 素材拖入轨道。 */
-  onDropAsset: (assetId: string, trackId: string, clientX: number) => void;
 }
 
 /**
  * 轨道行。
+ *
+ * 拖放由父级 `TimelinePanel` 统一接管（按指针命中轨道），这里只负责渲染 clip、
+ * 登记 DOM（供跨轨拖拽 / drop 命中）与点选。
  */
 export const TrackRow = memo(function TrackRow({
   track,
@@ -35,10 +36,18 @@ export const TrackRow = memo(function TrackRow({
   windowEndMs,
   onSelectClip,
   onSelectTrack,
-  onDropAsset,
 }: TrackRowProps): JSX.Element {
   const pxPerSecond = useUiStore((state) => state.pxPerSecond);
   const dragSession = useUiStore((state) => state.dragSession);
+
+  // 登记自身 DOM，供跨轨拖拽按指针位置命中目标轨道。
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const element = rowRef.current;
+    if (!element) return;
+    registerTrackElement(track.id, element);
+    return () => unregisterTrackElement(track.id);
+  }, [track.id]);
 
   const visibleClips = track.clips.filter((clip) => {
     if (dragSession?.clipId === clip.id) return true;
@@ -48,28 +57,18 @@ export const TrackRow = memo(function TrackRow({
 
   return (
     <div
+      ref={rowRef}
+      data-track-row={track.id}
       className={`relative flex-1 overflow-hidden border-b border-[var(--cc-border)] ${
         selectedTrackId === track.id ? 'bg-[var(--cc-bg-elevated)]' : 'bg-[var(--cc-bg-track)]'
       }`}
       style={{ height: track.height }}
       onClick={() => onSelectTrack(track.id)}
-      onDragOver={(event) => {
-        if (event.dataTransfer.types.includes(ASSET_DRAG_TYPE)) {
-          event.preventDefault();
-          event.dataTransfer.dropEffect = 'copy';
-        }
-      }}
-      onDrop={(event) => {
-        if (!event.dataTransfer.types.includes(ASSET_DRAG_TYPE)) return;
-        event.preventDefault();
-        event.stopPropagation();
-        const assetId = event.dataTransfer.getData(ASSET_DRAG_TYPE);
-        if (assetId) onDropAsset(assetId, track.id, event.clientX);
-      }}
     >
       {visibleClips.map((clip) => (
         <div
           key={clip.id}
+          data-clip-id={clip.id}
           className="absolute inset-y-0 left-0"
           style={{ transform: `translateX(${(clip.startMs / 1000) * pxPerSecond}px)` }}
         >

@@ -18,7 +18,8 @@ import { useTranslation } from '../../i18n/index.js';
 import type { Track } from '@clipcut/shared-types';
 import { IconButton } from '../common/IconButton.js';
 import { Icon } from '../common/Icon.js';
-import { setTrackFlags } from '../../state/actions.js';
+import { reorderTrack, setTrackFlags } from '../../state/actions.js';
+import { useProjectStore } from '../../state/projectStore.js';
 import { clsx } from '../../utils/clsx.js';
 
 /** TrackHeader 属性。 */
@@ -28,9 +29,9 @@ export interface TrackHeaderProps {
   onSelect: (trackId: string) => void;
 }
 
-/** 轨道类型 → 单字母标识（V/A/T）。 */
+/** 轨道类型 → 单字母标识（V/A/T/S）。 */
 function typeBadge(type: Track['type']): string {
-  return type === 'video' ? 'V' : type === 'audio' ? 'A' : 'T';
+  return type === 'video' ? 'V' : type === 'audio' ? 'A' : type === 'subtitle' ? 'S' : 'T';
 }
 
 /**
@@ -39,6 +40,10 @@ function typeBadge(type: Track['type']): string {
 export function TrackHeader({ track, selected, onSelect }: TrackHeaderProps): JSX.Element {
   const { t } = useTranslation();
   const badge = typeBadge(track.type);
+  const tracks = useProjectStore((state) => state.doc.tracks);
+  const maxOrder = tracks.reduce((max, item) => Math.max(max, item.order), 0);
+  const canMoveUp = track.order > 0;
+  const canMoveDown = track.order < maxOrder;
 
   return (
     <div
@@ -80,6 +85,20 @@ export function TrackHeader({ track, selected, onSelect }: TrackHeaderProps): JS
           {track.clips.length} {t('timeline.clips')}
         </span>
         <div className="flex shrink-0 items-center gap-0.5">
+          <IconButton
+            size="xs"
+            label={t('timeline.moveUp')}
+            disabled={!canMoveUp}
+            onClick={() => reorderTrack(track.id, 'up')}
+            icon={<Icon name="chevron-up" size={13} />}
+          />
+          <IconButton
+            size="xs"
+            label={t('timeline.moveDown')}
+            disabled={!canMoveDown}
+            onClick={() => reorderTrack(track.id, 'down')}
+            icon={<Icon name="chevron-down" size={13} />}
+          />
           <IconButton
             size="xs"
             label={track.muted ? t('timeline.unmute') : t('timeline.mute')}

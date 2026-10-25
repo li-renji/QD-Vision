@@ -23,8 +23,14 @@ import { applyTransform } from './drawTransform.js';
 /** 最多支持的 PIP 层数。 */
 export const MAX_OVERLAY_LAYERS = 4;
 
-/** 取帧函数：由帧提供器注入（预览用 videoPool，导出用 frameProviders）。 */
-export type FrameGetter = (assetId: string, sourceMs: number) => ImageBitmap | null;
+/**
+ * 取帧函数：由帧提供器注入（预览用 videoPool，导出用 frameProviders）。
+ *
+ * 返回 `CanvasImageSource` 而非仅 `ImageBitmap` —— 预览时可直接返回正在播放的
+ * `<video>` 元素，由 `drawImage` 同步绘制实时帧，避免异步 `createImageBitmap`
+ * 缓存落后导致的「重复帧 / 掉帧」观感。导出路径仍返回 `ImageBitmap`。
+ */
+export type FrameGetter = (assetId: string, sourceMs: number) => CanvasImageSource | null;
 
 /** 渲染参数。 */
 export interface RenderOptions {
@@ -49,6 +55,18 @@ export function isActiveAt(clip: Clip, timeMs: number): boolean {
 /** 判断轨道是否参与渲染。 */
 export function isTrackRenderable(track: Track): boolean {
   return !track.hidden;
+}
+
+/** 安全地从 `CanvasImageSource` 读取宽度（视频/图片游离时不报错）。 */
+function sourceWidth(source: CanvasImageSource): number {
+  if (source instanceof HTMLVideoElement) return source.videoWidth;
+  return (source as { width?: number }).width ?? 0;
+}
+
+/** 安全地从 `CanvasImageSource` 读取高度。 */
+function sourceHeight(source: CanvasImageSource): number {
+  if (source instanceof HTMLVideoElement) return source.videoHeight;
+  return (source as { height?: number }).height ?? 0;
 }
 
 /**
@@ -106,9 +124,9 @@ export function renderFrame(
     drawVideoClip(ctx, doc, clip, timeMs, opts, canvasWidth, canvasHeight);
   }
 
-  // 4) 文字轨
+  // 4) 文字轨 + 字幕轨（字幕轨是「带 clip 的专属字幕层」，渲染逻辑与文字轨一致）
   for (const track of tracks) {
-    if (track.type !== 'text') continue;
+    if (track.type !== 'text' && track.type !== 'subtitle') continue;
     if (!isTrackRenderable(track)) continue;
     for (const clip of track.clips) {
       if (!isActiveAt(clip, timeMs)) continue;
@@ -148,8 +166,11 @@ function drawVideoClip(
   const frame = getFrame(clip.assetId, sourceMs);
   if (!frame) return;
 
-  const contentWidth = frame.width || asset?.width || canvasWidth;
-  const contentHeight = frame.height || asset?.height || canvasHeight;
+  // 优先用素材原始尺寸（始终正确），回退到帧尺寸（图片位图）/ 画布尺寸。
+  // 注意：预览返回的是 <video>/<img> 元素，其 `.width` 在游离（不在 DOM）时
+  // 往往为 0，因此必须以 asset 原始尺寸为准。
+  const contentWidth = asset?.width || sourceWidth(frame) || canvasWidth;
+  const contentHeight = asset?.height || sourceHeight(frame) || canvasHeight;
 
   drawImageLayer(ctx, frame, {
     fit: clip.transform.fit,
@@ -239,12 +260,13 @@ export function hitTest(
     const frame = getFrame(clip.assetId as string, sourceTimeMs(clip, timeMs));
     if (!frame) continue;
 
+    const asset = doc.assets[clip.assetId as string];
     ctx.save();
     applyTransform(ctx, clip.transform, {
       canvasWidth: canvas.width,
       canvasHeight: canvas.height,
-      contentWidth: frame.width || canvas.width,
-      contentHeight: frame.height || canvas.height,
+      contentWidth: asset?.width || canvas.width,
+      contentHeight: asset?.height || canvas.height,
     });
     // 通过逆变换把点击点换算到内容局部坐标
     const localX = pointX;

@@ -102,3 +102,48 @@ export function findSnap(
 
   return best;
 }
+
+/**
+ * 计算「拖素材入轨」的吸附起点（FR-021 · drop 侧规则）。
+ *
+ * 规则（与产品反馈一致）：
+ * 1. **第一条轨道**放入**第一段** → 起点强制对齐 `0s`（硬规则，无视落点）；
+ * 2. **同一轨道**内已有片段 → 新片段起点吸附到该轨最近的片段边界 / `0` / 播放头
+ *    （仅在阈值内吸附，实现「同轨自动对齐、首尾相接」）；
+ * 3. **不同轨道**之间不互相牵引：非首条轨道且该轨还没有片段时落点自由
+ *    （例如第 2 条轨的第一段可放任意位置）。
+ *
+ * 纯函数、可单测；UI 只负责把 `rawStartMs`（落点）与缩放 / 阈值喂进来。
+ */
+export function computeDropStartMs(
+  doc: ProjectDoc,
+  targetTrackId: string,
+  rawStartMs: number,
+  playheadMs: number,
+  pxPerSecond: number,
+  thresholdPx: number = DEFAULT_SNAP_THRESHOLD_PX,
+): number {
+  const ordered = [...doc.tracks].sort((a, b) => a.order - b.order);
+  const isFirstTrack = ordered.length > 0 && ordered[0]?.id === targetTrackId;
+  const track = ordered.find((item) => item.id === targetTrackId);
+  const clips = track ? [...track.clips].sort((a, b) => a.startMs - b.startMs) : [];
+  const clampedRaw = Math.max(0, rawStartMs);
+
+  // 规则 1：首条轨道的第一段 → 0s（硬规则）
+  if (isFirstTrack && clips.length === 0) return 0;
+
+  // 规则 3：非首条轨道且为空 → 落点自由
+  if (clips.length === 0) return clampedRaw;
+
+  // 规则 2：同轨已有片段 → 吸附到该轨片段边界 + 0 + 播放头
+  const candidates: SnapCandidate[] = [
+    { ms: 0, kind: 'second', clipId: null },
+    { ms: Math.max(0, playheadMs), kind: 'playhead', clipId: null },
+  ];
+  for (const clip of clips) {
+    candidates.push({ ms: clip.startMs, kind: 'clip-start', clipId: clip.id });
+    candidates.push({ ms: clip.startMs + clip.durationMs, kind: 'clip-end', clipId: clip.id });
+  }
+  const hit = findSnap(clampedRaw, candidates, pxPerSecond, thresholdPx);
+  return hit ? Math.max(0, hit.ms) : clampedRaw;
+}

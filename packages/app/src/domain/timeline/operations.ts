@@ -20,6 +20,7 @@ import {
   type CanvasSettings,
   type Clip,
   type ClipTextProps,
+  type ClipTransform,
   type ExportSettings,
   type ProjectDoc,
   type ProviderConfig,
@@ -196,14 +197,20 @@ const DEFAULT_TRACK_HEIGHT: Record<TrackType, number> = {
   video: 64,
   audio: 56,
   text: 48,
+  subtitle: 48,
 };
+
+/** 轨道类型 → 中文标签（用于错误文案）。 */
+function trackTypeLabel(type: TrackType): string {
+  return type === 'audio' ? '音频' : type === 'video' ? '视频' : type === 'subtitle' ? '字幕' : '文字';
+}
 
 // ============ 内部工具 ============
 
 /** 判断素材能否放到该类型的轨道上。 */
 export function canPlaceAsset(trackType: TrackType, assetType: AssetType): boolean {
-  if (trackType === 'text') {
-    // 文字轨可以承载画中画（视频 / 图片素材），PRD §7 Q3。
+  if (trackType === 'text' || trackType === 'subtitle') {
+    // 文字轨 / 字幕轨可以承载画中画（视频 / 图片素材），PRD §7 Q3。
     return assetType === 'video' || assetType === 'image';
   }
   if (trackType === 'video') {
@@ -255,16 +262,24 @@ function buildTextProps(partial?: Partial<ClipTextProps>): ClipTextProps {
 
 // ============ 操作实现 ============
 
+/** 轨道类型 → 默认名称（中文，与 `factory.createDefaultTracks` 一致）。 */
+function defaultTrackName(type: TrackType, index: number): string {
+  const base =
+    type === 'audio' ? '音频轨' : type === 'video' ? '视频轨' : type === 'subtitle' ? '字幕轨' : '文字轨';
+  return `${base} ${index}`;
+}
+
 /**
- * 新增 clip。
+ * 在草稿的指定轨道上push一个 clip（含类型校验 / 变速 / 最小时长 / 叠放层级）。
  *
- * - 跨类型轨道**禁止**（视频/图片 → 视频轨或文字轨；音频 → 音频轨）。
- * - 图片素材默认 5s 时长。
- * - 落点接近播放头时自动吸附。
+ * 被 {@link addClip} 与 {@link addClipToAutoTrack} 共用，保证两条新增路径一致。
  */
-export function addClip(ctx: OperationContext, input: AddClipInput): OperationResult {
-  const track = ctx.doc.tracks.find((item) => item.id === input.trackId);
-  if (!track) throw new TrackNotFoundError(input.trackId);
+function pushClipToTrack(
+  draft: Draft<ProjectDoc>,
+  track: Draft<Track>,
+  input: AddClipInput,
+  ctx: OperationContext,
+): string {
   if (track.locked) throw new InvalidOperationError(`轨道已锁定：${track.name}`);
 
   const asset = resolveAsset(ctx, input.assetId);
@@ -280,8 +295,8 @@ export function addClip(ctx: OperationContext, input: AddClipInput): OperationRe
   const assetType: AssetType = asset ? asset.type : 'image';
   if (!canPlaceAsset(track.type, assetType)) {
     throw new IncompatibleTrackError(
-      `不能把${assetType === 'audio' ? '音频' : assetType === 'video' ? '视频' : '图片'}素材放到${
-        track.type === 'audio' ? '音频' : track.type === 'video' ? '视频' : '文字'
+      `不能把${assetType === 'audio' ? 'audio' : assetType === 'video' ? '视频' : '图片'}素材放到${
+        trackTypeLabel(track.type)
       }轨`,
     );
   }
@@ -329,38 +344,145 @@ export function addClip(ctx: OperationContext, input: AddClipInput): OperationRe
   const clipId = newClipId();
   const isOverlay = isTextClip
     ? true
-    : track.type === 'text'
+    : track.type === 'text' || track.type === 'subtitle'
       ? true
       : (input.isOverlay ?? false);
 
   const zIndex = isOverlay
-    ? ctx.doc.tracks
+    ? draft.tracks
         .flatMap((item) => item.clips)
         .filter((item) => item.isOverlay)
         .reduce((max, item) => Math.max(max, item.zIndex + 1), 0)
     : 0;
 
+  track.clips.push({
+    id: clipId,
+    assetId: input.assetId,
+    startMs,
+    durationMs,
+    inMs,
+    outMs,
+    speed,
+    isOverlay,
+    zIndex,
+    transform: { ...DEFAULT_TRANSFORM },
+    audio: { ...DEFAULT_AUDIO_PROPS },
+    ...(isTextClip ? { text: buildTextProps(input.text) } : {}),
+    label: input.label ?? null,
+  } as Draft<Clip>);
+
+  return clipId;
+}
+
+/**
+ * 新增 clip。
+ *
+ * - 跨类型轨道**禁止**（视频/图片 → 视频轨或文字轨；音频 → 音频轨）。
+ * - 图片素材默认 5s 时长。
+ * - 落点接近播放头时自动吸附。
+ */
+export function addClip(ctx: OperationContext, input: AddClipInput): OperationResult {
+  if (!ctx.doc.tracks.some((item) => item.id === input.trackId)) {
+    throw new TrackNotFoundError(input.trackId);
+  }
+
+  let newClipIdVal = '';
   const result = run(ctx.doc, (draft) => {
     const draftTarget = draftTrack(draft, input.trackId);
     if (!draftTarget) throw new TrackNotFoundError(input.trackId);
-    draftTarget.clips.push({
-      id: clipId,
-      assetId: input.assetId,
-      startMs,
-      durationMs,
-      inMs,
-      outMs,
-      speed,
-      isOverlay,
-      zIndex,
-      transform: { ...DEFAULT_TRANSFORM },
-      audio: { ...DEFAULT_AUDIO_PROPS },
-      ...(isTextClip ? { text: buildTextProps(input.text) } : {}),
-      label: input.label ?? null,
-    } as Draft<Clip>);
+    newClipIdVal = pushClipToTrack(draft, draftTarget, input, ctx);
   });
 
-  return { ...result, selectedClipId: clipId };
+  return { ...result, selectedClipId: newClipIdVal };
+}
+
+/**
+ * 新增 clip，并在**没有兼容轨道时自动创建**一条。
+ *
+ * 用于「拖素材到空工程 / 拖到轨道」——不再强制预设轨道。优先复用同类型已有
+ * 轨道；找不到时按素材类型创建（音频→音频轨，其它→视频轨，纯文字→字幕轨）。
+ */
+/**
+ * 按需建轨入参：不需要 `trackId`（目标轨道由素材类型自动挑选，必要时自动创建）。
+ */
+export type AddClipToAutoTrackInput = Omit<AddClipInput, 'trackId'> & {
+  /** 优先落轨的类型（缺省按素材类型推断）。 */
+  preferTrackType?: TrackType;
+};
+
+export function addClipToAutoTrack(
+  ctx: OperationContext,
+  input: AddClipToAutoTrackInput,
+): OperationResult {
+  const asset = resolveAsset(ctx, input.assetId);
+  const assetType: AssetType = asset ? asset.type : 'image';
+  const preferred: TrackType =
+    input.preferTrackType ??
+    (assetType === 'audio' ? 'audio' : input.assetId === null ? 'subtitle' : 'video');
+
+  let newClipIdVal = '';
+  const result = run(ctx.doc, (draft) => {
+    let target = draft.tracks.find(
+      (item) => item.type === preferred && canPlaceAsset(item.type, assetType),
+    );
+    if (!target) {
+      const id = newTrackId();
+      const maxOrder = draft.tracks.reduce((max, track) => Math.max(max, track.order), -1);
+      const count = draft.tracks.filter((track) => track.type === preferred).length;
+      target = {
+        id,
+        type: preferred,
+        name: defaultTrackName(preferred, count + 1),
+        order: maxOrder + 1,
+        muted: false,
+        hidden: false,
+        locked: false,
+        height: DEFAULT_TRACK_HEIGHT[preferred],
+        clips: [],
+      } as Draft<Track>;
+      draft.tracks.push(target);
+    }
+    newClipIdVal = pushClipToTrack(draft, target, { ...input, trackId: target.id }, ctx);
+  });
+
+  return { ...result, selectedClipId: newClipIdVal };
+}
+
+/**
+ * 轨道排序：与相邻轨道交换 `order`（UI 上的上移 / 下移）。
+ *
+ * `direction === 'up'` 表示在轨道列表中上移（order 变小），`'down'` 下移。
+ */
+export function reorderTrack(
+  ctx: OperationContext,
+  trackId: string,
+  direction: 'up' | 'down',
+): OperationResult {
+  const ordered = [...ctx.doc.tracks].sort((a, b) => a.order - b.order);
+  const index = ordered.findIndex((track) => track.id === trackId);
+  if (index < 0) throw new TrackNotFoundError(trackId);
+  const targetIndex = direction === 'up' ? index - 1 : index + 1;
+  if (targetIndex < 0 || targetIndex >= ordered.length) {
+    // 已在顶端 / 底端，无需移动
+    return { doc: ctx.doc, patches: [], inversePatches: [], selectedClipId: null };
+  }
+
+  const moving = ordered[index];
+  const neighbor = ordered[targetIndex];
+  if (!moving || !neighbor) {
+    return { doc: ctx.doc, patches: [], inversePatches: [], selectedClipId: null };
+  }
+
+  const result = run(ctx.doc, (draft) => {
+    const draftMoving = draftTrack(draft, moving.id);
+    const draftNeighbor = draftTrack(draft, neighbor.id);
+    if (!draftMoving || !draftNeighbor) return;
+    const temp = draftMoving.order;
+    draftMoving.order = draftNeighbor.order;
+    draftNeighbor.order = temp;
+  });
+
+  return { ...result, selectedClipId: null };
 }
 
 /**
@@ -410,7 +532,7 @@ export function moveClip(
     if (!canPlaceAsset(target.type, assetType)) {
       throw new IncompatibleTrackError(
         `不能把${assetType === 'audio' ? '音频' : assetType === 'video' ? '视频' : '图片'}clip 移动到${
-          target.type === 'audio' ? '音频' : target.type === 'video' ? '视频' : '文字'
+          trackTypeLabel(target.type)
         }轨`,
       );
     }
@@ -741,6 +863,31 @@ export function setClipProperty(
     const found = locateClip(draft, clipId);
     if (!found) throw new ClipNotFoundError(clipId);
     applyProperty(found.clip as unknown as Draft<Clip>, path, nextValue);
+  });
+
+  return { ...result, selectedClipId: clipId };
+}
+
+/**
+ * 批量设置 clip 的变换属性（位置 / 缩放 / 旋转 / 不透明度等，一次提交）。
+ *
+ * 用于画布上的拖拽手柄：一次拖拽产生一条历史记录，而不是每个字段各一条。
+ */
+export function setClipTransform(
+  ctx: OperationContext,
+  clipId: string,
+  patch: Partial<ClipTransform>,
+): OperationResult {
+  const located = ctx.doc.tracks
+    .map((track) => ({ track, clip: track.clips.find((item) => item.id === clipId) }))
+    .find((entry) => entry.clip);
+  if (!located || !located.clip) throw new ClipNotFoundError(clipId);
+  if (located.track.locked) throw new InvalidOperationError(`轨道已锁定：${located.track.name}`);
+
+  const result = run(ctx.doc, (draft) => {
+    const found = locateClip(draft, clipId);
+    if (!found) throw new ClipNotFoundError(clipId);
+    Object.assign(found.clip.transform, patch);
   });
 
   return { ...result, selectedClipId: clipId };

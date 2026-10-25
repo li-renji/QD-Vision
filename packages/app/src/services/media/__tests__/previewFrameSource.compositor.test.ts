@@ -177,6 +177,21 @@ describe('预览取帧 → 合成器 接线（端到端）', () => {
     const assets = Object.values(doc.assets).filter((asset) => asset.type === 'video');
     expect(assets.length).toBeGreaterThan(0);
 
+    // 本测试聚焦「视频从黑屏变内容」的回归（即原 bug），因此移除图片素材 / 片段：
+    // 图片一旦 <img> 解码即可直接绘制（无需异步抓帧），是合理优化，但会干扰
+    // 「首帧全黑」断言 —— 图片路径由 stub 用例单独覆盖。
+    const imageAssetIds = new Set(
+      Object.values(doc.assets)
+        .filter((asset: Asset) => asset.type === 'image')
+        .map((asset: Asset) => asset.id),
+    );
+    for (const track of doc.tracks) {
+      track.clips = track.clips.filter(
+        (clip) => !clip.assetId || !imageAssetIds.has(clip.assetId),
+      );
+    }
+    for (const id of imageAssetIds) delete doc.assets[id];
+
     let urlSeq = 0;
     const pendingCaptures: Array<() => void> = [];
     const poolElements = new Map<string, HTMLVideoElement>();

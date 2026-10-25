@@ -44,7 +44,9 @@ export type IconName =
   | 'timer'
   | 'pencil'
   | 'close'
-  | 'film';
+  | 'film'
+  | 'chevron-up'
+  | 'chevron-down';
 
 /** 图标属性。 */
 export interface IconProps {
@@ -247,6 +249,16 @@ const PATHS: Record<IconName, JSX.Element> = {
       <path d="M7.2 5v14" />
       <path d="M16.8 5v14" />
       <path d="M3 12h18" />
+    </>
+  ),
+  'chevron-up': (
+    <>
+      <path d="m6 14.5 6-6 6 6" />
+    </>
+  ),
+  'chevron-down': (
+    <>
+      <path d="m6 9.5 6 6 6-6" />
     </>
   ),
 };

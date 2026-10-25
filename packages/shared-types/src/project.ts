@@ -12,7 +12,7 @@ import type { AICapability } from './ai-capabilities.js';
 
 // ============ 基础枚举 ============
 
-export type TrackType = 'video' | 'audio' | 'text';
+export type TrackType = 'video' | 'audio' | 'text' | 'subtitle';
 export type AssetType = 'video' | 'audio' | 'image';
 export type AssetSourceType = 'local' | 'builtin' | 'connector';
 export type AspectPreset = '16:9' | '9:16' | '1:1' | '4:5' | 'custom';

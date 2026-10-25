@@ -277,10 +277,11 @@ describe('services/media/previewFrameSource', () => {
     fixture.pendingCaptures.shift()?.();
     await flush();
 
-    // 再次同步调用同一个（容差内的）源时间 → 直接命中缓存
+    // 再次同步调用同一个（容差内的）源时间：元素已对齐 → 直接返回实时 <video>
+    // （比旧版「返回缓存位图」更优：画面与解码帧一一对应，无异步滞后）。
     const frame = fixture.source.getFrame('asset_a', 1000);
     expect(frame).not.toBeNull();
-    expect(frame?.width).toBe(1920);
+    expect(frame).toBe(fixture.videos[0]);
   });
 
   it('容差内的重复取帧命中缓存，不再重复抓帧', async () => {
@@ -310,20 +311,24 @@ describe('services/media/previewFrameSource', () => {
     fixture.pendingCaptures.shift()?.();
     await flush();
     const first = fixture.source.getFrame('asset_a', 1000);
-    expect(first).not.toBeNull();
+    expect(first).toBe(fixture.videos[0]);
 
-    // 跳到 5s（远超容差）→ 必须返回**上一帧**而不是 null
+    // 跳到 5s（远超容差）→ 需要 seek：先返回**上一帧位图**兜底（不黑屏、非空，
+    // 且不是尚未对齐的实时元素）。
     const stale = fixture.source.getFrame('asset_a', 5000);
-    expect(stale).toBe(first);
+    expect(stale).not.toBeNull();
+    expect(stale).not.toBe(fixture.videos[0]);
+    expect((stale as { label?: string } | null)?.label).toBe('frame_1');
 
     await flush();
     expect(fixture.captures.length).toBe(2);
     fixture.pendingCaptures.shift()?.();
     await flush();
 
-    // 新帧到位后返回的是新位图
+    // 新帧到位、元素已对齐到 5s → 返回实时 <video>（画面已更新到新位置）
     const fresh = fixture.source.getFrame('asset_a', 5000);
-    expect(fresh).not.toBe(first);
+    expect(fresh).toBe(fixture.videos[0]);
+    expect(fixture.videos[0]?.currentTime).toBe(5);
   });
 
   it('未登记的 assetId 返回 null', () => {
@@ -460,9 +465,11 @@ describe('services/media/previewFrameSource', () => {
     fixture.pendingCaptures.shift()?.();
     await flush();
 
-    const frame = fixture.source.getFrame('asset_a', 1000) as unknown as {
+    // 跳到远处触发 seek → 返回上一帧位图（借此拿到位图引用以断言 close）
+    const frame = fixture.source.getFrame('asset_a', 5000) as unknown as {
       close: ReturnType<typeof vi.fn>;
-    };
+    } | null;
+    expect(frame).not.toBeNull();
     expect(fixture.revoked.length).toBe(0);
 
     fixture.source.dispose();
@@ -470,7 +477,7 @@ describe('services/media/previewFrameSource', () => {
     // objectURL 已释放
     expect(fixture.revoked.length).toBe(1);
     // 位图已 close
-    expect(frame.close).toHaveBeenCalled();
+    expect(frame?.close).toHaveBeenCalled();
     // 元素已 pause + 卸载
     expect(fixture.videos[0]?.pauseCount).toBeGreaterThan(0);
     // 内部状态清空

@@ -2,6 +2,7 @@
  * 时间线工具栏：分割 / 删除 / 复制 / 吸附开关 / 缩放控件 / 轨道管理。
  */
 
+import { useEffect, useState } from 'react';
 import { useTranslation } from '../../i18n/index.js';
 import { useUiStore } from '../../state/uiStore.js';
 import { useProjectStore } from '../../state/projectStore.js';
@@ -31,15 +32,24 @@ import {
  */
 export function TimelineToolbar(): JSX.Element {
   const { t } = useTranslation();
-  const snapEnabled = useUiStore((state) => state.snapEnabled);
-  const setSnapEnabled = useUiStore((state) => state.setSnapEnabled);
   const pxPerSecond = useUiStore((state) => state.pxPerSecond);
   const setPxPerSecond = useUiStore((state) => state.setPxPerSecond);
   const selectedClipIds = useUiStore((state) => state.selectedClipIds);
   const tracks = useProjectStore((state) => state.doc.tracks);
   const doc = useProjectStore((state) => state.doc);
   const fps = useProjectStore((state) => state.doc.settings.canvas.fps);
-  const currentTimeMs = usePlaybackStore((state) => state.currentTimeMs);
+  // 以 ~10Hz 节流订阅播放头时间：避免 60Hz 重渲染整个工具栏。
+  const [currentTimeMs, setCurrentTimeMs] = useState(() => usePlaybackStore.getState().currentTimeMs);
+  useEffect(() => {
+    let last = 0;
+    return usePlaybackStore.subscribe((state) => {
+      const now = performance.now();
+      if (now - last >= 100) {
+        last = now;
+        setCurrentTimeMs(state.currentTimeMs);
+      }
+    });
+  }, []);
 
   const report = (result: { ok: boolean; error: string | null }): void => {
     if (!result.ok && result.error) toast(result.error, 'warning');
@@ -112,13 +122,6 @@ export function TimelineToolbar(): JSX.Element {
 
       <div className="mx-1 h-4 w-px shrink-0 bg-[var(--cc-border)]" />
 
-      <IconButton
-        label={snapEnabled ? t('timeline.snapOn') : t('timeline.snapOff')}
-        active={snapEnabled}
-        onClick={() => setSnapEnabled(!snapEnabled)}
-        icon={<Icon name="magnet" size={14} />}
-      />
-
       <div className="mx-1 h-4 w-px shrink-0 bg-[var(--cc-border)]" />
 
       <IconButton
@@ -147,7 +150,7 @@ export function TimelineToolbar(): JSX.Element {
         <Select
           value=""
           onValueChange={(value) => {
-            if (value === 'video' || value === 'audio' || value === 'text') {
+            if (value === 'video' || value === 'audio' || value === 'text' || value === 'subtitle') {
               const count = tracks.filter((track) => track.type === value).length;
               report(
                 addTrack({
@@ -162,6 +165,7 @@ export function TimelineToolbar(): JSX.Element {
             { value: 'video', label: t('timeline.addTrack.video') },
             { value: 'audio', label: t('timeline.addTrack.audio') },
             { value: 'text', label: t('timeline.addTrack.text') },
+            { value: 'subtitle', label: t('timeline.addTrack.subtitle') },
           ]}
           ariaLabel={t('timeline.addTrack')}
         />

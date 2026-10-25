@@ -4,7 +4,7 @@
 
 import { useTranslation } from '../../i18n/index.js';
 import { usePrimarySelectedClip } from '../../state/selectors.js';
-import { setClipProperty, setClipSpeed } from '../../state/actions.js';
+import { setClipPropertyForSelected, setClipSpeed } from '../../state/actions.js';
 import { NumberField } from '../common/NumberField.js';
 import { Slider } from '../common/Slider.js';
 import { Select } from '../common/Select.js';
@@ -39,7 +39,7 @@ export function AudioSection(): JSX.Element | null {
             max={2}
             step={0.01}
             ariaLabel={t('inspector.gain')}
-            onValueChange={(value) => setClipProperty(clip.id, 'audio.gain', value)}
+            onValueChange={(value) => setClipPropertyForSelected('audio.gain', value)}
           />
         </label>
 
@@ -50,7 +50,7 @@ export function AudioSection(): JSX.Element | null {
             min={0}
             step={100}
             unit="ms"
-            onValueChange={(value) => setClipProperty(clip.id, 'audio.fadeInMs', value)}
+            onValueChange={(value) => setClipPropertyForSelected('audio.fadeInMs', value)}
             className="flex-1"
           />
           <NumberField
@@ -59,7 +59,7 @@ export function AudioSection(): JSX.Element | null {
             min={0}
             step={100}
             unit="ms"
-            onValueChange={(value) => setClipProperty(clip.id, 'audio.fadeOutMs', value)}
+            onValueChange={(value) => setClipPropertyForSelected('audio.fadeOutMs', value)}
             className="flex-1"
           />
         </div>
@@ -67,7 +67,7 @@ export function AudioSection(): JSX.Element | null {
         <Checkbox
           checked={clip.audio.muted}
           label={t('inspector.mute')}
-          onCheckedChange={(checked) => setClipProperty(clip.id, 'audio.muted', checked)}
+          onCheckedChange={(checked) => setClipPropertyForSelected('audio.muted', checked)}
         />
 
         <div className="flex items-center gap-2">

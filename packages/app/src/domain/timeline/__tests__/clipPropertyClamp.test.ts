@@ -39,16 +39,21 @@
 import { describe, expect, it } from 'vitest';
 import type { ProjectDoc } from '@clipcut/shared-types';
 import { createEmptyProject } from '../../project/factory.js';
-import { addClip, setClipProperty, type OperationContext } from '../operations.js';
+import { addClip, addTrack, setClipProperty, type OperationContext } from '../operations.js';
 import { CLIP_NUMERIC_RANGES, clampClipNumericValues } from '../valueRanges.js';
 
-/** 构造一个含单个 clip 的工程（不依赖 `deserialize`）。 */
+/** 构造一个含单个文字 clip 的工程（不依赖 `deserialize`）。 */
 function makeDocWithClip(): { doc: ProjectDoc; clipId: string } {
   const doc = createEmptyProject('契约测试工程', new Date('2026-01-01T00:00:00.000Z'));
-  const textTrack = doc.tracks.find((track) => track.type === 'text');
-  if (!textTrack) throw new Error('默认轨道里应有文字轨');
+  // 取消预设轨道后，测试显式建一条文字轨。
+  const withTrack = addTrack(
+    { doc, assets: doc.assets },
+    { type: 'text', name: '文字轨 1' },
+  );
+  const textTrack = withTrack.doc.tracks.find((track) => track.type === 'text');
+  if (!textTrack) throw new Error('应成功创建文字轨');
 
-  const context: OperationContext = { doc, assets: doc.assets };
+  const context: OperationContext = { doc: withTrack.doc, assets: withTrack.doc.assets };
   const result = addClip(context, {
     assetId: null,
     trackId: textTrack.id,

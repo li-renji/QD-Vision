@@ -66,7 +66,7 @@ export function useClipDrag(options: ClipDragOptions): ClipDragHandle {
         originOutMs: clip.outMs,
         snapMs: null,
         snapKind: null,
-        targetTrackId: null,
+        targetTrackId: trackId,
       });
 
       const onMove = (moveEvent: PointerEvent): void => {
@@ -106,6 +106,17 @@ export function useClipDrag(options: ClipDragOptions): ClipDragHandle {
         const offsetPx = (finalStart - originRef.current.startMs) * (ui.pxPerSecond / 1000);
         element.style.transform = `translateX(${offsetPx}px)`;
 
+        // 跨轨命中：按指针 Y 坐标找到目标轨道（类型不兼容则回到原轨）
+        let resolvedTarget = trackId;
+        const hit = hitTestTrack(moveEvent.clientX, moveEvent.clientY);
+        if (hit && hit !== trackId) {
+          const doc = useProjectStore.getState().doc;
+          const targetTrack = doc.tracks.find((t) => t.id === hit);
+          if (targetTrack && canDropOnTrack(doc, clip, targetTrack)) {
+            resolvedTarget = hit;
+          }
+        }
+
         useUiStore.getState().setDragSession({
           ...(useUiStore.getState().dragSession ?? {
             kind: 'move' as const,
@@ -119,6 +130,7 @@ export function useClipDrag(options: ClipDragOptions): ClipDragHandle {
           }),
           snapMs,
           snapKind,
+          targetTrackId: resolvedTarget,
         });
       };
 
@@ -134,11 +146,14 @@ export function useClipDrag(options: ClipDragOptions): ClipDragHandle {
         );
 
         element.style.transform = '';
+
+        // 一次性提交 → 1 条历史记录（支持跨轨：以拖拽期间命中的目标轨为准）
+        const committedTarget =
+          useUiStore.getState().dragSession?.targetTrackId ?? trackId;
         useUiStore.getState().setDragSession(null);
 
-        // 一次性提交 → 1 条历史记录
-        if (finalStart !== originRef.current.startMs) {
-          moveClip(clip.id, trackId, finalStart);
+        if (finalStart !== originRef.current.startMs || committedTarget !== trackId) {
+          moveClip(clip.id, committedTarget, finalStart);
         }
       };
 
@@ -167,4 +182,35 @@ export function canDropOnTrack(doc: ProjectDoc, clip: Clip, targetTrack: Track):
   if (targetTrack.type === 'audio') return assetType === 'audio';
   if (targetTrack.type === 'video') return assetType === 'video' || assetType === 'image';
   return assetType === 'video' || assetType === 'image';
+}
+
+// ============ 轨道 DOM 注册表（跨轨拖拽命中目标轨道用） ============
+
+/**
+ * 轨道元素注册表：拖拽时按指针视口坐标命中目标轨道。
+ *
+ * 由 `TrackRow` 在挂载时登记自身 DOM、卸载时注销；`useClipDrag` 在
+ * `pointermove` 期间用 `getBoundingClientRect` 实时命中（已含滚动偏移）。
+ */
+const trackElements = new Map<string, HTMLElement>();
+
+/** 登记轨道元素。 */
+export function registerTrackElement(trackId: string, element: HTMLElement): void {
+  trackElements.set(trackId, element);
+}
+
+/** 注销轨道元素。 */
+export function unregisterTrackElement(trackId: string): void {
+  trackElements.delete(trackId);
+}
+
+/** 按视口坐标命中轨道（返回 trackId 或 null）。 */
+export function hitTestTrack(clientX: number, clientY: number): string | null {
+  for (const [trackId, element] of trackElements) {
+    const rect = element.getBoundingClientRect();
+    if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+      return trackId;
+    }
+  }
+  return null;
 }

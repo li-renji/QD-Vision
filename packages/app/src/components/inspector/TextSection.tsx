@@ -4,7 +4,7 @@
 
 import { useTranslation } from '../../i18n/index.js';
 import { usePrimarySelectedClip } from '../../state/selectors.js';
-import { setClipProperty, setTextProps } from '../../state/actions.js';
+import { setTextPropsForSelected } from '../../state/actions.js';
 import { TextField } from '../common/TextField.js';
 import { Checkbox } from '../common/Checkbox.js';
 import { NumberField } from '../common/NumberField.js';
@@ -69,7 +69,7 @@ export function TextSection(): JSX.Element | null {
           value={text.content}
           multiline
           rows={4}
-          onValueChange={(value) => setTextProps(clip.id, { content: value })}
+          onValueChange={(value) => setTextPropsForSelected({ content: value })}
         />
 
         <div className="flex items-center gap-2">
@@ -80,7 +80,7 @@ export function TextSection(): JSX.Element | null {
                 key={preset.key}
                 size="sm"
                 variant="subtle"
-                onClick={() => setTextProps(clip.id, preset.props)}
+                onClick={() => setTextPropsForSelected(preset.props)}
               >
                 {t(preset.labelKey)}
               </Button>
@@ -93,7 +93,7 @@ export function TextSection(): JSX.Element | null {
           <input
             type="text"
             value={text.fontFamily}
-            onChange={(event) => setTextProps(clip.id, { fontFamily: event.target.value })}
+            onChange={(event) => setTextPropsForSelected({ fontFamily: event.target.value })}
             className="cc-input flex-1"
           />
         </div>
@@ -105,7 +105,7 @@ export function TextSection(): JSX.Element | null {
             min={1}
             max={2000}
             step={1}
-            onValueChange={(value) => setTextProps(clip.id, { fontSize: value })}
+            onValueChange={(value) => setTextPropsForSelected({ fontSize: value })}
             className="flex-1"
           />
           <NumberField
@@ -114,7 +114,7 @@ export function TextSection(): JSX.Element | null {
             min={100}
             max={900}
             step={100}
-            onValueChange={(value) => setTextProps(clip.id, { fontWeight: value })}
+            onValueChange={(value) => setTextPropsForSelected({ fontWeight: value })}
             className="flex-1"
           />
         </div>
@@ -123,7 +123,7 @@ export function TextSection(): JSX.Element | null {
           <span className="cc-label w-16">{t('inspector.textStyle')}</span>
           <Select
             value={text.fontStyle}
-            onValueChange={(value) => setTextProps(clip.id, { fontStyle: value as 'normal' | 'italic' })}
+            onValueChange={(value) => setTextPropsForSelected({ fontStyle: value as 'normal' | 'italic' })}
             options={[
               { value: 'normal', label: 'normal' },
               { value: 'italic', label: 'italic' },
@@ -138,7 +138,7 @@ export function TextSection(): JSX.Element | null {
             <input
               type="color"
               value={text.color}
-              onChange={(event) => setTextProps(clip.id, { color: event.target.value })}
+              onChange={(event) => setTextPropsForSelected({ color: event.target.value })}
               className="h-6 w-10 cursor-pointer rounded border border-[var(--cc-border)] bg-transparent"
             />
           </label>
@@ -147,7 +147,7 @@ export function TextSection(): JSX.Element | null {
             <input
               type="color"
               value={text.strokeColor}
-              onChange={(event) => setTextProps(clip.id, { strokeColor: event.target.value })}
+              onChange={(event) => setTextPropsForSelected({ strokeColor: event.target.value })}
               className="h-6 w-10 cursor-pointer rounded border border-[var(--cc-border)] bg-transparent"
             />
           </label>
@@ -160,7 +160,7 @@ export function TextSection(): JSX.Element | null {
             min={0}
             max={100}
             step={1}
-            onValueChange={(value) => setTextProps(clip.id, { strokeWidth: value })}
+            onValueChange={(value) => setTextPropsForSelected({ strokeWidth: value })}
             className="flex-1"
           />
           <label className="flex flex-1 items-center gap-1">
@@ -168,13 +168,13 @@ export function TextSection(): JSX.Element | null {
             <input
               type="color"
               value={text.backgroundColor ?? '#000000'}
-              onChange={(event) => setTextProps(clip.id, { backgroundColor: event.target.value })}
+              onChange={(event) => setTextPropsForSelected({ backgroundColor: event.target.value })}
               className="h-6 w-10 cursor-pointer rounded border border-[var(--cc-border)] bg-transparent"
             />
             <Checkbox
               checked={text.backgroundColor !== null}
               onCheckedChange={(checked) =>
-                setTextProps(clip.id, { backgroundColor: checked ? 'rgba(0,0,0,0.5)' : null })
+                setTextPropsForSelected({ backgroundColor: checked ? 'rgba(0,0,0,0.5)' : null })
               }
             />
           </label>
@@ -187,7 +187,7 @@ export function TextSection(): JSX.Element | null {
             min={0.1}
             max={10}
             step={0.1}
-            onValueChange={(value) => setTextProps(clip.id, { lineHeight: value })}
+            onValueChange={(value) => setTextPropsForSelected({ lineHeight: value })}
             className="flex-1"
           />
           <NumberField
@@ -196,7 +196,7 @@ export function TextSection(): JSX.Element | null {
             min={-100}
             max={100}
             step={1}
-            onValueChange={(value) => setTextProps(clip.id, { letterSpacing: value })}
+            onValueChange={(value) => setTextPropsForSelected({ letterSpacing: value })}
             className="flex-1"
           />
         </div>
@@ -205,7 +205,7 @@ export function TextSection(): JSX.Element | null {
           <span className="cc-label w-16">{t('inspector.textAlign')}</span>
           <Select
             value={text.align}
-            onValueChange={(value) => setTextProps(clip.id, { align: value as TextAlign })}
+            onValueChange={(value) => setTextPropsForSelected({ align: value as TextAlign })}
             options={[
               { value: 'left', label: '←' },
               { value: 'center', label: '↔' },
@@ -215,7 +215,7 @@ export function TextSection(): JSX.Element | null {
           />
           <Select
             value={text.verticalAlign}
-            onValueChange={(value) => setTextProps(clip.id, { verticalAlign: value as VerticalAlign })}
+            onValueChange={(value) => setTextPropsForSelected({ verticalAlign: value as VerticalAlign })}
             options={[
               { value: 'top', label: '↑' },
               { value: 'middle', label: '↕' },
@@ -230,4 +230,4 @@ export function TextSection(): JSX.Element | null {
 }
 
 /** 供其它模块复用的文字属性写入。 */
-export { setClipProperty };
+export { setTextPropsForSelected };

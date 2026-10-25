@@ -6,6 +6,7 @@
 
 import { create } from 'zustand';
 import type { AssetType } from '@clipcut/shared-types';
+import { useProjectStore } from './projectStore.js';
 
 /** 拖拽会话（瞬态，拖拽期间只影响极小组件）。 */
 export interface DragSession {
@@ -97,7 +98,15 @@ export const useUiStore = create<UiState>()((set, get) => ({
   inspectorTab: 'export',
 
   setSelectedClipIds: (ids) => {
-    set({ selectedClipIds: [...ids] });
+    const next = [...ids];
+    const doc = useProjectStore.getState().doc;
+    if (next.length === 0) {
+      set({ selectedClipIds: next, selectedTrackId: null });
+      return;
+    }
+    // 反向派生：选中 clip 时同步高亮其所属轨道（多 clip 共属一轨时生效）。
+    const owner = doc.tracks.find((track) => track.clips.some((clip) => clip.id === next[0]));
+    set({ selectedClipIds: next, selectedTrackId: owner ? owner.id : null });
   },
 
   toggleSelectedClip: (id) => {
@@ -106,10 +115,25 @@ export const useUiStore = create<UiState>()((set, get) => ({
       ? selectedClipIds.filter((item) => item !== id)
       : [...selectedClipIds, id];
     set({ selectedClipIds: next });
+    const doc = useProjectStore.getState().doc;
+    if (next.length === 0) {
+      set({ selectedTrackId: null });
+      return;
+    }
+    const owner = doc.tracks.find((track) => track.clips.some((clip) => clip.id === next[0]));
+    set({ selectedTrackId: owner ? owner.id : null });
   },
 
   setSelectedTrackId: (id) => {
-    set({ selectedTrackId: id });
+    if (id === null) {
+      set({ selectedTrackId: null, selectedClipIds: [] });
+      return;
+    }
+    // 选中整条轨道 → 同步选中该轨上的全部 clip，属性面板即可作用于这些 clip。
+    const doc = useProjectStore.getState().doc;
+    const track = doc.tracks.find((item) => item.id === id);
+    const clipIds = track ? track.clips.map((clip) => clip.id) : [];
+    set({ selectedTrackId: id, selectedClipIds: clipIds });
   },
 
   setPxPerSecond: (value) => {
