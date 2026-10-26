@@ -46,7 +46,9 @@ export { AudioEngine, audioEngine } from './audioEngine.js';
 export {
   DEFAULT_MASTER_GAIN,
   MAX_MASTER_GAIN,
+  clipGainMultiplierAt,
   createPreviewAudio,
+  envelopeGainAt,
   fadeGainAt,
   getActivePreviewAudio,
   getPreviewAudioDiagnostics,

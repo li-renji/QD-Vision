@@ -42,12 +42,24 @@ export interface ClipTransform {
 
 // ============ 音频属性 ============
 
+/** 音量包络关键帧（相对 clip 起点的毫秒 + 增益）。 */
+export interface AudioEnvelopePoint {
+  /** 相对 clip 起点，0 ~ durationMs */
+  timeMs: number;
+  /** 0~2 */
+  gain: number;
+}
+
 export interface ClipAudioProps {
   muted: boolean;
   /** 0~2，步进 0.01 */
   gain: number;
   fadeInMs: number;
   fadeOutMs: number;
+  /** 音频是否已从「音画同轨」的视频 clip 中拆出（避免重复提取 / 重复发声）。 */
+  extracted?: boolean;
+  /** 音量包络（关键帧）。为空表示全程恒定 `gain`。 */
+  envelope?: AudioEnvelopePoint[];
   [extra: string]: unknown;
 }
 
@@ -69,6 +81,32 @@ export interface ClipTextProps {
   letterSpacing: number;
   align: TextAlign;
   verticalAlign: VerticalAlign;
+  [extra: string]: unknown;
+}
+
+// ============ 滤镜 ============
+
+/** 滤镜预设 id。 */
+export type FilterPresetId =
+  | 'none'
+  | 'vivid'
+  | 'mono'
+  | 'vintage'
+  | 'cool'
+  | 'warm'
+  | 'fade'
+  | 'sharp';
+
+/**
+ * clip 滤镜（Canvas 2D `ctx.filter`，预览与导出共用同一实现）。
+ *
+ * `intensity` 为 0~1 的强度系数，由预设映射函数插值到具体滤镜参数。
+ */
+export interface ClipFilter {
+  /** 预设 id，`none` 表示无滤镜 */
+  preset: FilterPresetId;
+  /** 强度 0~1 */
+  intensity: number;
   [extra: string]: unknown;
 }
 
@@ -96,6 +134,8 @@ export interface Clip {
   audio: ClipAudioProps;
   text?: ClipTextProps;
   label: string | null;
+  /** 滤镜（缺省视为无滤镜） */
+  filter?: ClipFilter;
   [extra: string]: unknown;
 }
 
@@ -301,7 +341,11 @@ export const DEFAULT_TRANSFORM: ClipTransform = {
   scale: 1,
   rotation: 0,
   opacity: 1,
-  fit: 'contain',
+  // 默认「填满画布」（cover）：与剪映 / CapCut 一致 —— 视频铺满画布，
+  // 切换画布比例时画面随之重新构图，预览所见即所选比例。过去的 contain
+  // 会按素材自身宽高比 letterbox，比例一不一致就出现黑边，用户感知为
+  // 「预览显示的不是我选的比例」。
+  fit: 'cover',
   cornerRadius: 0,
 };
 

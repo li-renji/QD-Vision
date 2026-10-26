@@ -52,6 +52,13 @@ export interface TransformHandlesProps {
   onChange: (patch: Partial<ClipTransform>) => void;
   /** 整个拖拽手势结束时提交（父层据此写一条历史记录）。 */
   onCommit?: () => void;
+  /**
+   * 视图同步键：预览缩放 / 平移变化时传入新值，触发叠加层重新测量。
+   *
+   * CSS 变换不改变布局尺寸，ResizeObserver 不会触发；不重测的话
+   * 手柄会停在缩放前的位置，与画布错位。
+   */
+  syncKey?: string | number;
 }
 
 /**
@@ -64,6 +71,7 @@ export function TransformHandles({
   canvasHeight,
   onChange,
   onCommit,
+  syncKey,
 }: TransformHandlesProps): JSX.Element | null {
   // 叠加层相对画布父容器的定位盒（与 canvas 显示区域重合）。
   const [box, setBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
@@ -92,7 +100,7 @@ export function TransformHandles({
       observer.disconnect();
       window.removeEventListener('resize', sync);
     };
-  }, [canvasRef]);
+  }, [canvasRef, syncKey]);
 
   if (!box) return null;
 

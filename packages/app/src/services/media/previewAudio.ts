@@ -84,6 +84,60 @@ export function fadeGainAt(clip: Clip, timeMs: number): number {
   return Math.max(0, Math.min(1, multiplier));
 }
 
+/** 数值钳制。 */
+function clampGain(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * 计算某 clip 在 `timeMs` 处的音量包络增益倍率（0~2）。
+ *
+ * - 无包络关键帧 → `1`（恒定 `clip.audio.gain`）；
+ * - 介于两个关键帧之间 → 线性插值；
+ * - 超出首尾关键帧 → 取最近关键帧的增益（clamp）。
+ *
+ * 纯函数：不碰 DOM / AudioContext，可直接单测。
+ */
+export function envelopeGainAt(clip: Clip, timeMs: number): number {
+  const local = timeMs - clip.startMs;
+  // 区间外由 `fadeGainAt` 归零，这里返回 1 不影响最终乘积。
+  if (local < 0 || local > clip.durationMs) return 1;
+
+  const env = clip.audio.envelope;
+  if (!env || env.length === 0) return 1;
+
+  const pts = [...env].sort((a, b) => a.timeMs - b.timeMs);
+  const first = pts[0];
+  if (!first) return 1;
+  if (local <= first.timeMs) return clampGain(first.gain, 0, 2);
+  const last = pts[pts.length - 1];
+  if (!last) return 1;
+  if (local >= last.timeMs) return clampGain(last.gain, 0, 2);
+
+  for (let i = 0; i < pts.length - 1; i += 1) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    if (!a || !b) continue;
+    if (local >= a.timeMs && local <= b.timeMs) {
+      const span = b.timeMs - a.timeMs;
+      const r = span <= 0 ? 0 : (local - a.timeMs) / span;
+      return clampGain(a.gain + (b.gain - a.gain) * r, 0, 2);
+    }
+  }
+  return clampGain(last.gain, 0, 2);
+}
+
+/**
+ * 某 clip 在 `timeMs` 处的**总增益倍率** = 淡入淡出 × 音量包络。
+ *
+ * 与导出侧 `applyFadeEnvelope`（淡入淡出 + 包络统一排程）口径一致，
+ * 最终增益 = `clip.audio.gain × clipGainMultiplierAt`（预览侧逐帧写入 `clipGain`）。
+ */
+export function clipGainMultiplierAt(clip: Clip, timeMs: number): number {
+  return fadeGainAt(clip, timeMs) * envelopeGainAt(clip, timeMs);
+}
+
 /**
  * 解析工程主音量。
  *
@@ -330,7 +384,7 @@ export function createPreviewAudio(options: PreviewAudioOptions): PreviewAudioCo
     for (const [clipId, clipGain] of graph.clipGains) {
       const clip = bindings.get(clipId)?.clip;
       if (!clip) continue;
-      const target = clip.audio.gain * fadeGainAt(clip, currentTimeMs);
+      const target = clip.audio.gain * clipGainMultiplierAt(clip, currentTimeMs);
       const param = clipGain.gain;
       if (Math.abs(param.value - target) <= GAIN_EPSILON) continue;
       // cancelAndHoldAtTime：保住 seek 瞬间的当前值，避免参数跳变发出「咔」声。

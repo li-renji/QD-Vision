@@ -10,6 +10,7 @@ export { TimelineContextMenu, type TimelineContextMenuProps } from './TimelineCo
 export { TimelinePanel } from './TimelinePanel.js';
 export { TimelineRuler, computeTicks, type RulerTick, type TimelineRulerProps } from './TimelineRuler.js';
 export { TimelineToolbar } from './TimelineToolbar.js';
+export { TrackContextMenu, type TrackContextMenuProps } from './TrackContextMenu.js';
 export { TrackHeader, type TrackHeaderProps } from './TrackHeader.js';
 export { TrackRow, type TrackRowProps } from './TrackRow.js';
 export { WaveformCanvas, type WaveformCanvasProps } from './WaveformCanvas.js';

@@ -142,8 +142,8 @@ describe('FR-064 · 导入路径复用领域层数值约束', () => {
     expect(canvas.doc.settings.canvas.fps).toBe(MIN_EXPORT_FPS);
   });
 
-  it('约束表覆盖 12 条 clip 路径 + 工程级路径，且 clampToRange 与表一致', () => {
-    expect(Object.keys(CLIP_NUMERIC_RANGES)).toHaveLength(15);
+  it('约束表覆盖全部 clip 数值路径 + 工程级路径，且 clampToRange 与表一致', () => {
+    expect(Object.keys(CLIP_NUMERIC_RANGES)).toHaveLength(16);
     for (const [path, range] of Object.entries(CLIP_NUMERIC_RANGES)) {
       expect(clampToRange(path, range[0] - 1000)).toBe(range[0]);
       expect(clampToRange(path, range[1] + 1000)).toBe(range[1]);

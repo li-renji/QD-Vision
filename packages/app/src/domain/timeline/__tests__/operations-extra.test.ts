@@ -12,9 +12,11 @@ import {
   addTextClip,
   addTrack,
   InvalidOperationError,
+  matchAspectPreset,
   removeAsset,
   removeSubtitleCue,
   removeTrack,
+  renameTrack,
   resizeCanvas,
   setAiSettings,
   setCanvasSettings,
@@ -136,6 +138,65 @@ describe('domain/timeline/operations · 素材 / 字幕 / 设置', () => {
     expect(result.doc.tracks[0]?.name).toBe('插到最前');
   });
 
+  it('新增视频轨：主轨道顶格（插到第一条视频轨正下方）', () => {
+    const { doc } = deserialize(readFixtureJson('minimal.clipcut.json'));
+    // minimal 夹具：首条轨道即视频轨（主轨）。
+    const firstVideoName = doc.tracks.find((track) => track.type === 'video')?.name;
+    expect(firstVideoName).toBeDefined();
+
+    const result = addTrack(makeContext(doc), { type: 'video', name: '视频轨 2' });
+    const names = result.doc.tracks.map((track) => track.name);
+    const mainIndex = names.indexOf(firstVideoName as string);
+    expect(names[mainIndex + 1]).toBe('视频轨 2');
+  });
+
+  it('新增视频轨：没有任何视频轨时插到最顶部', () => {
+    const { doc } = deserialize(readFixtureJson('minimal.clipcut.json'));
+    const audioOnly: ProjectDoc = {
+      ...doc,
+      tracks: doc.tracks
+        .filter((track) => track.type !== 'video')
+        .map((track, index) => ({ ...track, order: index })),
+    };
+    const result = addTrack(makeContext(audioOnly), { type: 'video', name: '唯一的视频轨' });
+    expect(result.doc.tracks[0]?.name).toBe('唯一的视频轨');
+  });
+
+  it('新增轨道后满足「数组下标 === order」不变式', () => {
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
+    const result = addTrack(makeContext(doc), { type: 'video', name: '顶格视频轨' });
+    result.doc.tracks.forEach((track, index) => {
+      expect(track.order).toBe(index);
+    });
+  });
+
+  it('删除轨道后 order 连续重排（无断号）', () => {
+    const { doc } = deserialize(readFixtureJson('full.clipcut.json'));
+    const victim = doc.tracks[1];
+    expect(victim).toBeDefined();
+    const result = removeTrack(makeContext(doc), (victim as { id: string }).id);
+    result.doc.tracks.forEach((track, index) => {
+      expect(track.order).toBe(index);
+    });
+    expect(result.doc.tracks.some((track) => track.id === (victim as { id: string }).id)).toBe(false);
+  });
+
+  it('重命名轨道：trim 后写入，空名抛错', () => {
+    const { doc } = deserialize(readFixtureJson('minimal.clipcut.json'));
+    const target = doc.tracks[0];
+    expect(target).toBeDefined();
+
+    const renamed = renameTrack(makeContext(doc), (target as { id: string }).id, '  新名字  ');
+    expect(renamed.doc.tracks.find((track) => track.id === (target as { id: string }).id)?.name).toBe(
+      '新名字',
+    );
+
+    expect(() => renameTrack(makeContext(doc), (target as { id: string }).id, '   ')).toThrow(
+      InvalidOperationError,
+    );
+    expect(() => renameTrack(makeContext(doc), 'nope', 'x')).toThrow();
+  });
+
   it('删除不存在的轨道抛错', () => {
     const { doc } = deserialize(readFixtureJson('minimal.clipcut.json'));
     expect(() => removeTrack(makeContext(doc), 'nope')).toThrow();
@@ -218,11 +279,24 @@ describe('domain/timeline/operations · 素材 / 字幕 / 设置', () => {
     const result = resizeCanvas(makeContext(doc), 1080, 1920);
     expect(result.doc.settings.canvas.width).toBe(1080);
     expect(result.doc.settings.canvas.height).toBe(1920);
+    // 关键回归：尺寸变化必须回写 aspectPreset，否则比例下拉框不会更新（「比例调不了」）。
+    expect(result.doc.settings.canvas.aspectPreset).toBe('9:16');
 
     const pip = result.doc.tracks.flatMap((t) => t.clips).find((c) => c.id === 'clip_full_c2');
     expect(pip?.transform.x).toBeCloseTo(0.75 * (1080 / 1920), 6);
 
     const text = result.doc.tracks.flatMap((t) => t.clips).find((c) => c.id === 'clip_full_c4');
     expect(text?.text?.fontSize).toBeCloseTo(64 * (1920 / 1080), 6);
+  });
+
+  it('matchAspectPreset 按宽高比识别预设（与像素值无关）', () => {
+    expect(matchAspectPreset(1920, 1080)).toBe('16:9');
+    expect(matchAspectPreset(1280, 720)).toBe('16:9'); // 同比例、不同像素
+    expect(matchAspectPreset(1080, 1920)).toBe('9:16');
+    expect(matchAspectPreset(1080, 1080)).toBe('1:1');
+    expect(matchAspectPreset(1080, 1350)).toBe('4:5');
+    expect(matchAspectPreset(1000, 1000)).toBe('1:1');
+    expect(matchAspectPreset(1200, 800)).toBe('custom'); // 3:2，非预设比例
+    expect(matchAspectPreset(0, 0)).toBe('custom');
   });
 });

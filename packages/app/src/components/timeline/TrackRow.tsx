@@ -13,12 +13,12 @@ export interface TrackRowProps {
   track: Track;
   assets: Record<string, Asset>;
   selectedClipIds: readonly string[];
-  selectedTrackId: string | null;
+  selectedTrackIds: readonly string[];
   /** 虚拟化窗口（毫秒） */
   windowStartMs: number;
   windowEndMs: number;
   onSelectClip: (clipId: string, additive: boolean) => void;
-  onSelectTrack: (trackId: string) => void;
+  onSelectTrack: (trackId: string, additive: boolean) => void;
 }
 
 /**
@@ -31,7 +31,7 @@ export const TrackRow = memo(function TrackRow({
   track,
   assets,
   selectedClipIds,
-  selectedTrackId,
+  selectedTrackIds,
   windowStartMs,
   windowEndMs,
   onSelectClip,
@@ -60,10 +60,15 @@ export const TrackRow = memo(function TrackRow({
       ref={rowRef}
       data-track-row={track.id}
       className={`relative flex-1 overflow-hidden border-b border-[var(--cc-border)] ${
-        selectedTrackId === track.id ? 'bg-[var(--cc-bg-elevated)]' : 'bg-[var(--cc-bg-track)]'
+        selectedTrackIds.includes(track.id) ? 'bg-[var(--cc-bg-elevated)]' : 'bg-[var(--cc-bg-track)]'
       }`}
       style={{ height: track.height }}
-      onClick={() => onSelectTrack(track.id)}
+      // 只有点空白处才选中轨道；点在 clip 上由 clip 自己处理（否则会冒泡覆盖 clip 多选）。
+      onClick={(event) => {
+        if ((event.target as HTMLElement).closest('[data-clip-id]')) return;
+        const additive = event.ctrlKey || event.metaKey || event.shiftKey;
+        onSelectTrack(track.id, additive);
+      }}
     >
       {visibleClips.map((clip) => (
         <div

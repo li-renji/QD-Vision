@@ -177,6 +177,7 @@ describe('FR-064② · 编辑路径与导入路径共用同一张约束表', () 
         audio: { gain: 1, fadeInMs: 0, fadeOutMs: 0 },
         text: { fontSize: 16, fontWeight: 400, strokeWidth: 0, lineHeight: 1.2, letterSpacing: 0, align: 'center', verticalAlign: 'middle' },
         label: null,
+        filter: { preset: 'none', intensity: 1 },
       };
       writePath(importSide as unknown as Record<string, unknown>, path, outOfRange);
       clampClipNumericValues(importSide as never);

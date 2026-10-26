@@ -473,6 +473,7 @@ export async function renderOfflineMix(
           clip.durationMs,
           clip.audio.fadeInMs,
           clip.audio.fadeOutMs,
+          clip.audio.envelope,
           context,
         );
         return envelope;

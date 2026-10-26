@@ -10,8 +10,8 @@ import { Slider } from '../common/Slider.js';
 import { Select } from '../common/Select.js';
 import { Checkbox } from '../common/Checkbox.js';
 
-/** 常用变速档位。 */
-const SPEED_PRESETS = [0.25, 0.5, 1, 1.5, 2, 4];
+/** 常用变速档位（正值，最高 100×）。 */
+const SPEED_PRESETS = [0.25, 0.5, 1, 1.5, 2, 4, 8, 16, 50, 100];
 
 /**
  * 音频分区。
@@ -70,6 +70,17 @@ export function AudioSection(): JSX.Element | null {
           onCheckedChange={(checked) => setClipPropertyForSelected('audio.muted', checked)}
         />
 
+        <div className="flex flex-col gap-1">
+          <span className="cc-label">{t('inspector.envelope')}</span>
+          <button
+            type="button"
+            className="rounded border border-[var(--cc-border)] bg-[var(--cc-bg-elevated)] px-2 py-1 text-[11px] text-[var(--cc-fg)] hover:bg-[var(--cc-bg-hover)]"
+            onClick={() => setClipPropertyForSelected('audio.envelope', [])}
+          >
+            {t('inspector.resetEnvelope')}
+          </button>
+        </div>
+
         <div className="flex items-center gap-2">
           <span className="cc-label w-16">{t('inspector.speed')}</span>
           <Select
@@ -85,7 +96,7 @@ export function AudioSection(): JSX.Element | null {
             label={t('inspector.speedCustom')}
             value={clip.speed}
             min={0.1}
-            max={10}
+            max={100}
             step={0.1}
             onValueChange={(value) => setClipSpeed(clip.id, value)}
             className="flex-1"

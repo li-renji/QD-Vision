@@ -542,8 +542,8 @@ describe('services/export/offlineAudioRenderer', () => {
       // 淡入：t=1.0 处置 0，1.5 处 ramp 到 1
       expect(events[0]).toEqual({ kind: 'set', value: 0, time: 1 });
       expect(events[1]).toEqual({ kind: 'ramp', value: 1, time: 1.5 });
-      // 淡出：3.5 处置 1，4.0 处 ramp 到 0
-      expect(events[2]).toEqual({ kind: 'set', value: 1, time: 3.5 });
+      // 淡出：3.5 处 ramp 到 1（统一调度器对该中间关键帧用 ramp，效果与 set 1 相同），4.0 处 ramp 到 0
+      expect(events[2]).toEqual({ kind: 'ramp', value: 1, time: 3.5 });
       expect(events[3]).toEqual({ kind: 'ramp', value: 0, time: 4 });
     });
 

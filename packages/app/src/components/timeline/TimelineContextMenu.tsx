@@ -7,7 +7,7 @@
 import type { Clip } from '@clipcut/shared-types';
 import { useTranslation } from '../../i18n/index.js';
 import { ContextMenuItem, ContextMenuSeparator } from '../common/ContextMenu.js';
-import { deleteClip, duplicateClip, setClipProperty, splitClip } from '../../state/actions.js';
+import { deleteClip, duplicateClip, setClipProperty, setClipSpeed, splitClip } from '../../state/actions.js';
 import { useProjectStore } from '../../state/projectStore.js';
 import { usePlaybackStore } from '../../state/playbackStore.js';
 import { toast } from '../common/Toast.js';
@@ -53,11 +53,11 @@ export function TimelineContextMenu({ clip }: TimelineContextMenuProps): JSX.Ele
       />
       <ContextMenuItem
         label={`${t('inspector.speed')} 0.5x`}
-        onSelect={() => run(() => setClipProperty(clip.id, 'speed', 0.5))}
+        onSelect={() => run(() => setClipSpeed(clip.id, 0.5))}
       />
       <ContextMenuItem
         label={`${t('inspector.speed')} 2x`}
-        onSelect={() => run(() => setClipProperty(clip.id, 'speed', 2))}
+        onSelect={() => run(() => setClipSpeed(clip.id, 2))}
       />
       <ContextMenuSeparator />
       <ContextMenuItem

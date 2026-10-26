@@ -49,6 +49,9 @@ export function useClipDrag(options: ClipDragOptions): ClipDragHandle {
     (event: React.PointerEvent<HTMLElement>): void => {
       if (locked) return;
       if (event.button !== 0) return;
+      // 音量曲线（VolumeEnvelope）的节点拖拽/双击加点在它自己的 overlay 内处理，
+      // 这里直接放行给该组件，避免触发 clip 整体移动拖拽。
+      if ((event.target as HTMLElement).closest('[data-volume-envelope]')) return;
 
       const element = event.currentTarget;
       elementRef.current = element;

@@ -493,8 +493,65 @@ describe('services/media/audioEngine', () => {
       expect(gain.gain.events).toEqual([
         { type: 'setValueAtTime', value: 0, time: 0 },
         { type: 'linearRampToValueAtTime', value: 1, time: 0.2 },
-        { type: 'setValueAtTime', value: 1, time: 0.7 },
+        { type: 'linearRampToValueAtTime', value: 1, time: 0.7 },
         { type: 'linearRampToValueAtTime', value: 0, time: 1 },
+      ]);
+    });
+
+    it('音量包络关键帧被排程进增益曲线（含淡入/淡出时合并排程）', () => {
+      const engine = new AudioEngine();
+      const doc = makeDoc([makeTrack({ clips: [makeClip()] })]);
+      engine.buildGraph(doc, () => makeElement());
+      const gain = new MockGainNode();
+      const clip = makeClip({
+        startMs: 0,
+        durationMs: 1000,
+        audio: {
+          muted: false,
+          gain: 1,
+          fadeInMs: 0,
+          fadeOutMs: 0,
+          envelope: [
+            { timeMs: 250, gain: 1.5 },
+            { timeMs: 750, gain: 0.5 },
+          ],
+        },
+      });
+
+      engine.applyFade(clip, gain as unknown as GainNode);
+
+      expect(gain.gain.events).toEqual([
+        { type: 'setValueAtTime', value: 1, time: 0 },
+        { type: 'linearRampToValueAtTime', value: 1.5, time: 0.25 },
+        { type: 'linearRampToValueAtTime', value: 0.5, time: 0.75 },
+        { type: 'linearRampToValueAtTime', value: 1, time: 1 },
+      ]);
+    });
+
+    it('淡入+包络合并排程（起点 0、峰值 1、包络点、收尾 1）', () => {
+      const engine = new AudioEngine();
+      const doc = makeDoc([makeTrack({ clips: [makeClip()] })]);
+      engine.buildGraph(doc, () => makeElement());
+      const gain = new MockGainNode();
+      const clip = makeClip({
+        startMs: 0,
+        durationMs: 1000,
+        audio: {
+          muted: false,
+          gain: 1,
+          fadeInMs: 200,
+          fadeOutMs: 0,
+          envelope: [{ timeMs: 500, gain: 0.3 }],
+        },
+      });
+
+      engine.applyFade(clip, gain as unknown as GainNode);
+
+      expect(gain.gain.events).toEqual([
+        { type: 'setValueAtTime', value: 0, time: 0 },
+        { type: 'linearRampToValueAtTime', value: 1, time: 0.2 },
+        { type: 'linearRampToValueAtTime', value: 0.3, time: 0.5 },
+        { type: 'linearRampToValueAtTime', value: 1, time: 1 },
       ]);
     });
 

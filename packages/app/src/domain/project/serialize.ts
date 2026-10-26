@@ -78,6 +78,7 @@ const CLIP_KEYS = [
   'audio',
   'text',
   'label',
+  'filter',
 ] as const;
 const TRANSFORM_KEYS = [
   'x',
@@ -88,7 +89,7 @@ const TRANSFORM_KEYS = [
   'fit',
   'cornerRadius',
 ] as const;
-const AUDIO_PROPS_KEYS = ['muted', 'gain', 'fadeInMs', 'fadeOutMs'] as const;
+const AUDIO_PROPS_KEYS = ['muted', 'gain', 'fadeInMs', 'fadeOutMs', 'extracted', 'envelope'] as const;
 const TEXT_PROPS_KEYS = [
   'content',
   'fontFamily',

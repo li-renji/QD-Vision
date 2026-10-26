@@ -5,6 +5,7 @@
 import { useTranslation } from '../../i18n/index.js';
 import { usePrimarySelectedClip } from '../../state/selectors.js';
 import { TransformSection } from './TransformSection.js';
+import { FilterSection } from './FilterSection.js';
 import { AudioSection } from './AudioSection.js';
 import { TextSection } from './TextSection.js';
 import { SubtitleSection } from './SubtitleSection.js';
@@ -35,6 +36,7 @@ export function InspectorPanel({ onRelink }: InspectorPanelProps): JSX.Element {
       {clip ? (
         <>
           <TransformSection />
+          <FilterSection />
           <AudioSection />
           {clip.text ? <TextSection /> : null}
           {clip.assetId ? <AssetSection {...(onRelink ? { onRelink } : {})} /> : null}

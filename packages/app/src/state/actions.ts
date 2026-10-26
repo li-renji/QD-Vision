@@ -21,10 +21,12 @@ import {
   deleteClip as domainDeleteClip,
   reorderTrack as domainReorderTrack,
   duplicateClip as domainDuplicateClip,
+  extractAudio as domainExtractAudio,
   moveClip as domainMoveClip,
   removeAsset as domainRemoveAsset,
   removeSubtitleCue as domainRemoveSubtitleCue,
   removeTrack as domainRemoveTrack,
+  renameTrack as domainRenameTrack,
   resizeCanvas as domainResizeCanvas,
   setAiSettings as domainSetAiSettings,
   setCanvasSettings as domainSetCanvasSettings,
@@ -47,6 +49,9 @@ import { useProjectStore } from './projectStore.js';
 import { useUiStore } from './uiStore.js';
 import { useHistoryStore } from './historyStore.js';
 import { usePlaybackStore } from './playbackStore.js';
+import { serialize } from '../domain/project/serialize.js';
+import { getPlatformBridge } from '../platform/index.js';
+import { saveProject as repoSaveProject } from '../services/storage/projectRepo.js';
 
 /** 动作执行结果。 */
 export interface ActionResult<T = unknown> {
@@ -153,7 +158,7 @@ export function duplicateClip(clipId: string, toTrackId: string, atMs: number): 
 
 /** 批量复制：把剪贴板内容粘贴到当前选中轨道的播放头处。 */
 export function pasteClips(): ActionResult<number> {
-  const trackId = useUiStore.getState().selectedTrackId;
+  const trackId = useUiStore.getState().selectedTrackIds[0];
   if (!trackId) return { ok: false, error: '请先选中一条轨道', value: null };
   if (clipboard.length === 0) return { ok: false, error: '剪贴板为空', value: null };
 
@@ -255,7 +260,37 @@ export function addTrack(input: AddTrackInput): ActionResult {
 
 /** 删除轨道。 */
 export function removeTrack(trackId: string): ActionResult {
-  return run(() => apply((ctx) => domainRemoveTrack(ctx, trackId)));
+  return run(() => {
+    const result = apply((ctx) => domainRemoveTrack(ctx, trackId));
+    // 删除轨道后选中项可能引用已不存在的 clip / 轨道 → 收敛选中，避免幽灵选中。
+    const doc = useProjectStore.getState().doc;
+    const existing = new Set(doc.tracks.flatMap((track) => track.clips.map((clip) => clip.id)));
+    useUiStore.getState().pruneSelection(existing);
+    if (useUiStore.getState().selectedTrackIds.includes(trackId)) {
+      useUiStore.getState().setSelectedTrackId(trackId, true);
+    }
+    return result;
+  });
+}
+
+/** 重命名轨道。 */
+export function renameTrack(trackId: string, name: string): ActionResult {
+  return run(() => apply((ctx) => domainRenameTrack(ctx, trackId, name)));
+}
+
+/** 从视频轨提取音频到独立音频轨。 */
+export function extractAudio(trackId: string): ActionResult<number> {
+  const doc = useProjectStore.getState().doc;
+  const track = doc.tracks.find((item) => item.id === trackId);
+  const count = track
+    ? track.clips.filter((clip) => {
+        if (!clip.assetId) return false;
+        const asset = doc.assets[clip.assetId];
+        return !!asset?.hasAudio && !clip.audio.extracted;
+      }).length
+    : 0;
+  const result = run(() => apply((ctx) => domainExtractAudio(ctx, trackId)));
+  return { ...result, value: count };
 }
 
 /** 轨道排序：上移 / 下移（与相邻轨道交换 `order`）。 */
@@ -339,6 +374,30 @@ export function setCanvasSettings(patch: {
 /** 修改画布尺寸（自动换算 transform 与字号）。 */
 export function resizeCanvas(width: number, height: number): ActionResult {
   return run(() => apply((ctx) => domainResizeCanvas(ctx, width, height)));
+}
+
+// ============ 工程读写操作 ============
+
+/** 保存到本地工程库（IndexedDB）。 */
+export function saveProjectNow(): ActionResult {
+  const doc = useProjectStore.getState().doc;
+  return run(() => {
+    void repoSaveProject(doc);
+    return { ok: true, error: null, value: null };
+  });
+}
+
+/** 导出工程文件（下载 .clipcut.json）。 */
+export function exportProjectFile(): ActionResult {
+  const doc = useProjectStore.getState().doc;
+  return run(() => {
+    const content = serialize(doc);
+    void getPlatformBridge()
+      .saveFile(`${doc.name || 'project'}.clipcut.json`, new Blob([content], { type: 'application/json' }))
+      .then(() => undefined)
+      .catch(() => undefined);
+    return { ok: true, error: null, value: null };
+  });
 }
 
 /** 设置导出参数。 */

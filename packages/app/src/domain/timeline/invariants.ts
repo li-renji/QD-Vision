@@ -48,8 +48,8 @@ export const DURATION_RECOMPUTE_TOLERANCE_MS = 1;
 /** 变速下界。 */
 export const MIN_CLIP_SPEED = 0.1;
 
-/** 变速上界。 */
-export const MAX_CLIP_SPEED = 10;
+/** 变速上界（0~100 倍可用区间）。 */
+export const MAX_CLIP_SPEED = 100;
 
 /** 不变式被破坏。 */
 export class ClipInvariantError extends Error {

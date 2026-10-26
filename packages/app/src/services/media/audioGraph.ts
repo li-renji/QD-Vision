@@ -278,7 +278,14 @@ function applySpeed(
 }
 
 /**
- * 应用淡入淡出包络（线性增益曲线）。
+ * 应用淡入淡出 + 音量包络（线性增益曲线）。
+ *
+ * `envelope` 为可选的音量包络关键帧（相对 clip 起点的 `timeMs` 与增益 `gain`）。
+ * 与淡入淡出统一排程到同一条 `AudioParam` 自动化曲线上（按时间排序后线性插值）。
+ *
+ * ⚠️ 本函数只负责「淡入淡出 × 包络」这一层；clip 的基础增益
+ * （`clip.audio.gain`）由上游 `clipGain` 节点单独相乘承担，两者口径与预览侧
+ * `clip.audio.gain × fadeGainAt × envelopeGainAt` 完全一致。
  */
 export function applyFadeEnvelope(
   gain: GainNode,
@@ -286,21 +293,69 @@ export function applyFadeEnvelope(
   durationMs: number,
   fadeInMs: number,
   fadeOutMs: number,
+  envelope?: ReadonlyArray<{ timeMs: number; gain: number }> | null,
   _context?: BaseAudioContext,
 ): void {
+  // 既无淡入淡出也无音量包络 → 不排程（保持节点原增益，等价旧行为）。
+  if (fadeInMs <= 0 && fadeOutMs <= 0 && (!envelope || envelope.length === 0)) return;
+
   const start = startMs / 1000;
   const end = (startMs + durationMs) / 1000;
   const param = gain.gain;
 
+  // 统一时间轴关键帧（秒，倍率）。
+  const keyframes: Array<{ t: number; g: number }> = [];
+
+  // 淡入：0 → 1（无淡入时以 1 为起点锚点，保证包络从此处接力）。
   if (fadeInMs > 0) {
-    param.setValueAtTime(0, start);
-    param.linearRampToValueAtTime(1, start + fadeInMs / 1000);
+    const fiEnd = start + Math.min(fadeInMs, durationMs) / 1000;
+    keyframes.push({ t: start, g: 0 });
+    keyframes.push({ t: fiEnd, g: 1 });
+  } else {
+    keyframes.push({ t: start, g: 1 });
   }
 
-  if (fadeOutMs > 0) {
-    param.setValueAtTime(1, Math.max(start, end - fadeOutMs / 1000));
-    param.linearRampToValueAtTime(0, end);
+  // 音量包络关键帧（相对 clip 起点换算到绝对时间轴）。
+  if (envelope && envelope.length > 0) {
+    const sorted = [...envelope].sort((a, b) => a.timeMs - b.timeMs);
+    for (const point of sorted) {
+      const t = start + clamp(point.timeMs, 0, durationMs) / 1000;
+      keyframes.push({ t, g: clamp(point.gain, 0, 2) });
+    }
   }
+
+  // 淡出：1 → 0（无淡出时以 1 收尾）。
+  if (fadeOutMs > 0) {
+    const foStart = Math.max(start, end - Math.min(fadeOutMs, durationMs) / 1000);
+    keyframes.push({ t: foStart, g: 1 });
+    keyframes.push({ t: end, g: 0 });
+  } else {
+    keyframes.push({ t: end, g: 1 });
+  }
+
+  keyframes.sort((a, b) => a.t - b.t);
+
+  // 清掉旧的排程（真实 GainNode 有该方法；mock 环境可能缺失，故做防御）。
+  if (typeof param.cancelScheduledValues === 'function') {
+    param.cancelScheduledValues(start);
+  }
+
+  // 首帧用 setValueAtTime 落定起点，其后线性插值 —— 与旧「淡入淡出」事件序列一致。
+  let first = true;
+  for (const kf of keyframes) {
+    if (first) {
+      param.setValueAtTime(kf.g, kf.t);
+      first = false;
+    } else {
+      param.linearRampToValueAtTime(kf.g, kf.t);
+    }
+  }
+}
+
+/** 数值钳制。 */
+function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
 }
 
 /**

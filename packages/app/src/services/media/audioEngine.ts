@@ -134,7 +134,7 @@ export class AudioEngine {
     return source;
   }
 
-  /** 应用淡入淡出包络。 */
+  /** 应用淡入淡出 + 音量包络。 */
   applyFade(clip: Clip, gain: GainNode): void {
     if (!this.doc || !this.context) return;
     applyFadeEnvelope(
@@ -143,6 +143,7 @@ export class AudioEngine {
       clip.durationMs,
       clip.audio.fadeInMs,
       clip.audio.fadeOutMs,
+      clip.audio.envelope,
       this.context,
     );
   }

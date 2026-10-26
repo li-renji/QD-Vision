@@ -75,7 +75,7 @@ describe('domain/timeline/invariants', () => {
   it('常量符合规格', () => {
     expect(MIN_CLIP_DURATION_MS).toBe(100);
     expect(MIN_CLIP_SPEED).toBe(0.1);
-    expect(MAX_CLIP_SPEED).toBe(10);
+    expect(MAX_CLIP_SPEED).toBe(100);
   });
 
   it('fixClipDuration 忠实按公式重算，**不做任何钳制**', () => {

@@ -42,7 +42,8 @@ export interface MediaFilter {
 /** UI 状态。 */
 export interface UiState {
   selectedClipIds: string[];
-  selectedTrackId: string | null;
+  /** 支持多选：被选中的轨道 id 集合（Ctrl/Shift 累加）。 */
+  selectedTrackIds: string[];
   /** 时间线缩放（像素/秒），范围 0.5 ~ 200 */
   pxPerSecond: number;
   scrollLeft: number;
@@ -59,10 +60,20 @@ export interface UiState {
   mediaFilter: MediaFilter;
   /** 属性面板当前分区 */
   inspectorTab: 'transform' | 'audio' | 'text' | 'subtitle' | 'export' | 'asset';
+  /**
+   * 预览画面**视图**缩放（1 = 适应窗口）。
+   *
+   * 纯视图变换，不写入工程数据；与 `zoomMode`（fit/fill/original）正交：
+   * `zoomMode` 决定画布如何填满窗口，本项在其结果之上再做放大查看。
+   */
+  previewZoom: number;
+  /** 预览平移（像素，仅 `previewZoom > 1` 时有意义）。 */
+  previewPan: { x: number; y: number };
 
   setSelectedClipIds: (ids: string[]) => void;
   toggleSelectedClip: (id: string) => void;
-  setSelectedTrackId: (id: string | null) => void;
+  /** 选中轨道；additive=true 时与当前选中集合做累加/切换（多选）。 */
+  setSelectedTrackId: (id: string, additive?: boolean) => void;
   setPxPerSecond: (value: number) => void;
   setScrollLeft: (value: number) => void;
   setSnapEnabled: (value: boolean) => void;
@@ -73,9 +84,19 @@ export interface UiState {
   setMediaView: (view: 'grid' | 'list') => void;
   setMediaFilter: (filter: Partial<MediaFilter>) => void;
   setInspectorTab: (tab: UiState['inspectorTab']) => void;
+  setPreviewZoom: (value: number) => void;
+  setPreviewPan: (pan: { x: number; y: number }) => void;
+  /** 复位预览视图（缩放 1 + 平移归零）。 */
+  resetPreviewView: () => void;
   /** 收敛选中项（删除 clip 后调用）。 */
   pruneSelection: (existingIds: ReadonlySet<string>) => void;
 }
+
+/** 预览视图缩放下限。 */
+export const MIN_PREVIEW_ZOOM = 0.25;
+
+/** 预览视图缩放上限。 */
+export const MAX_PREVIEW_ZOOM = 8;
 
 /** 缩放下限。 */
 export const MIN_PX_PER_SECOND = 0.5;
@@ -83,9 +104,30 @@ export const MIN_PX_PER_SECOND = 0.5;
 /** 缩放上限。 */
 export const MAX_PX_PER_SECOND = 200;
 
+/** 选出拥有给定 clip 的所有轨道 id（去重保序）。 */
+function trackIdsOwningClips(doc: { tracks: { id: string; clips: { id: string }[] }[] }, clipIds: string[]): string[] {
+  if (clipIds.length === 0) return [];
+  const set = new Set<string>();
+  for (const track of doc.tracks) {
+    if (track.clips.some((clip) => clipIds.includes(clip.id))) set.add(track.id);
+  }
+  return [...set];
+}
+
+/** 选出给定轨道上的全部 clip id（去重保序）。 */
+function clipIdsOfTracks(doc: { tracks: { id: string; clips: { id: string }[] }[] }, trackIds: string[]): string[] {
+  const set = new Set<string>();
+  for (const track of doc.tracks) {
+    if (trackIds.includes(track.id)) {
+      for (const clip of track.clips) set.add(clip.id);
+    }
+  }
+  return [...set];
+}
+
 export const useUiStore = create<UiState>()((set, get) => ({
   selectedClipIds: [],
-  selectedTrackId: null,
+  selectedTrackIds: [],
   pxPerSecond: 40,
   scrollLeft: 0,
   snapEnabled: true,
@@ -96,17 +138,19 @@ export const useUiStore = create<UiState>()((set, get) => ({
   mediaView: 'grid',
   mediaFilter: { keyword: '', type: 'all' },
   inspectorTab: 'export',
+  previewZoom: 1,
+  previewPan: { x: 0, y: 0 },
 
   setSelectedClipIds: (ids) => {
-    const next = [...ids];
+    const next = [...new Set(ids)];
     const doc = useProjectStore.getState().doc;
     if (next.length === 0) {
-      set({ selectedClipIds: next, selectedTrackId: null });
+      set({ selectedClipIds: [], selectedTrackIds: [] });
       return;
     }
-    // 反向派生：选中 clip 时同步高亮其所属轨道（多 clip 共属一轨时生效）。
-    const owner = doc.tracks.find((track) => track.clips.some((clip) => clip.id === next[0]));
-    set({ selectedClipIds: next, selectedTrackId: owner ? owner.id : null });
+    // 反向派生：选中 clip 时同步高亮其所属轨道（多 clip 跨多条轨道时全部高亮）。
+    const trackIds = trackIdsOwningClips(doc, next);
+    set({ selectedClipIds: next, selectedTrackIds: trackIds });
   },
 
   toggleSelectedClip: (id) => {
@@ -114,26 +158,25 @@ export const useUiStore = create<UiState>()((set, get) => ({
     const next = selectedClipIds.includes(id)
       ? selectedClipIds.filter((item) => item !== id)
       : [...selectedClipIds, id];
-    set({ selectedClipIds: next });
     const doc = useProjectStore.getState().doc;
-    if (next.length === 0) {
-      set({ selectedTrackId: null });
-      return;
-    }
-    const owner = doc.tracks.find((track) => track.clips.some((clip) => clip.id === next[0]));
-    set({ selectedTrackId: owner ? owner.id : null });
+    const trackIds = next.length > 0 ? trackIdsOwningClips(doc, next) : [];
+    set({ selectedClipIds: next, selectedTrackIds: trackIds });
   },
 
-  setSelectedTrackId: (id) => {
-    if (id === null) {
-      set({ selectedTrackId: null, selectedClipIds: [] });
-      return;
-    }
-    // 选中整条轨道 → 同步选中该轨上的全部 clip，属性面板即可作用于这些 clip。
+  setSelectedTrackId: (id, additive = false) => {
     const doc = useProjectStore.getState().doc;
-    const track = doc.tracks.find((item) => item.id === id);
-    const clipIds = track ? track.clips.map((clip) => clip.id) : [];
-    set({ selectedTrackId: id, selectedClipIds: clipIds });
+    let trackIds: string[];
+    if (additive) {
+      const current = get().selectedTrackIds;
+      trackIds = current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id];
+    } else {
+      trackIds = [id];
+    }
+    // 选中整条/多条轨道 → 同步选中这些轨上的全部 clip，属性面板即可批量作用。
+    const clipIds = clipIdsOfTracks(doc, trackIds);
+    set({ selectedTrackIds: trackIds, selectedClipIds: clipIds });
   },
 
   setPxPerSecond: (value) => {
@@ -177,11 +220,31 @@ export const useUiStore = create<UiState>()((set, get) => ({
     set({ inspectorTab: tab });
   },
 
+  setPreviewZoom: (value) => {
+    const clamped = Math.min(MAX_PREVIEW_ZOOM, Math.max(MIN_PREVIEW_ZOOM, value));
+    // 回到 100% 时平移一并归零，避免内容停在偏移位置。
+    if (clamped === 1) {
+      set({ previewZoom: 1, previewPan: { x: 0, y: 0 } });
+      return;
+    }
+    set({ previewZoom: clamped });
+  },
+
+  setPreviewPan: (pan) => {
+    set({ previewPan: pan });
+  },
+
+  resetPreviewView: () => {
+    set({ previewZoom: 1, previewPan: { x: 0, y: 0 } });
+  },
+
   pruneSelection: (existingIds) => {
-    const { selectedClipIds } = get();
-    const next = selectedClipIds.filter((id) => existingIds.has(id));
-    if (next.length !== selectedClipIds.length) {
-      set({ selectedClipIds: next });
+    const { selectedClipIds, selectedTrackIds } = get();
+    const nextClips = selectedClipIds.filter((id) => existingIds.has(id));
+    const existingTrackIds = new Set(useProjectStore.getState().doc.tracks.map((track) => track.id));
+    const nextTracks = selectedTrackIds.filter((id) => existingTrackIds.has(id));
+    if (nextClips.length !== selectedClipIds.length || nextTracks.length !== selectedTrackIds.length) {
+      set({ selectedClipIds: nextClips, selectedTrackIds: nextTracks });
     }
   },
 }));

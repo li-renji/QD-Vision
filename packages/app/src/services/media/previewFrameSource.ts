@@ -168,6 +168,8 @@ interface AssetRuntime {
   pending: Promise<void> | null;
   /** 该元素的播放意图。 */
   playing: boolean;
+  /** 是否已发起一次尚未完成的 seek（防止 seek 未回执前反复纠正 →  seek 风暴）。 */
+  seeking: boolean;
 }
 
 /** 默认的异步抓帧实现。 */
@@ -219,9 +221,38 @@ export function createPreviewFrameSource(
   let globalRate = 1;
   /** assetId → 片段倍速（clip.speed）。 */
   const assetSpeeds = new Map<string, number>();
+  /**
+   * 需要在下一帧**重新锚定**到 `sourceMs` 的素材（倍速刚变化时置位）。
+   *
+   * 倍速变化只改 `video.playbackRate`，不会搬移 `currentTime` —— 于是
+   * `currentTime` 与新的 `sourceMs` 之间会立刻出现一大段漂移。若只靠
+   * 「漂移 > 2× 容差才 seek」的被动纠正，用户会先看到一帧错位画面、再被
+   * 拽回，即「变速后帧不协调」。置位后，播放分支会在下一帧**强制** seek 一次，
+   * 让画面立刻对齐新速率下的正确源时间。
+   */
+  const anchorPending = new Set<string>();
 
   const notifyFrameReady = (): void => {
     for (const listener of frameReadyListeners) listener();
+  };
+
+  /**
+   * 把视频 seek 到 `sourceMs`（秒），带去重保护。
+   *
+   * `currentTime` 赋值是**异步**的：seek 完成前 `currentTime` 仍是旧值。
+   * 若不置位 `seeking`，被动纠正会在 seek 回执前每帧重复发起 seek
+   * （seek 风暴），表现为连续卡顿。这里用 `seeking` 闸门 + `seeked` 事件解锁，
+   * 并以「漂移已收敛」兜底解锁，防止个别浏览器不漏发 `seeked` 时永久卡死。
+   */
+  const seekVideoTo = (runtime: AssetRuntime, sourceMs: number): void => {
+    const video = runtime.video;
+    if (!video || runtime.seeking) return;
+    runtime.seeking = true;
+    const done = (): void => {
+      runtime.seeking = false;
+    };
+    video.addEventListener('seeked', done, { once: true });
+    video.currentTime = Math.max(0, sourceMs / 1000);
   };
 
   /**
@@ -255,6 +286,7 @@ export function createPreviewFrameSource(
       bitmapMs: 0,
       pending: null,
       playing: false,
+      seeking: false,
     };
     runtimes.set(asset.id, created);
     return created;
@@ -402,9 +434,24 @@ export function createPreviewFrameSource(
     // 一一对应，彻底消除异步 `createImageBitmap` 缓存落后造成的「重复帧 /
     // 掉帧」观感。仅在漂移超过 2× 容差时才纠正 `currentTime`（避免无谓 seek）。
     if (runtime.video && runtime.playing) {
+      // 有效倍速 = 全局倍速 × 本片段倍速。
+      const rate = globalRate * (assetSpeeds.get(runtime.assetId) ?? 1);
+      // 漂移容差**按倍速缩放**：高倍速下源时间推进快，若沿用固定容差
+      // （40×2=80ms 源时间），一点点真实抖动就会瞬间超阈值 → 每帧都发起
+      // 纠正性 seek → seek 风暴 → 画面连续卡顿 / 掉帧。缩放到与真实时间
+      // 对齐（80ms × 倍速）后，稳态下几乎不再纠正，仅在倍速切换时由
+      // `anchorPending` 精确锚定一次。
+      const driftTolerance = AV_SYNC_TOLERANCE_MS * 2 * Math.max(1, Math.abs(rate));
       const driftMs = Math.abs(runtime.video.currentTime * 1000 - sourceMs);
-      if (driftMs > AV_SYNC_TOLERANCE_MS * 2) {
-        runtime.video.currentTime = Math.max(0, sourceMs / 1000);
+      // 倍速刚变 → 强制锚定一次；否则漂移超（缩放后的）阈值才被动纠正。
+      if (anchorPending.has(runtime.assetId)) {
+        anchorPending.delete(runtime.assetId);
+        seekVideoTo(runtime, sourceMs);
+      } else if (driftMs > driftTolerance) {
+        seekVideoTo(runtime, sourceMs);
+      } else if (runtime.seeking && driftMs <= AV_SYNC_TOLERANCE_MS) {
+        // 漂移已收敛：认为上一次 seek 实际已完成（`seeked` 丢失时的兜底解锁）。
+        runtime.seeking = false;
       }
       return runtime.video;
     }
@@ -483,9 +530,14 @@ export function createPreviewFrameSource(
 
   const setPlaybackRate = (rate: number): void => {
     if (disposed) return;
+    if (globalRate === rate) return;
     globalRate = rate;
     for (const runtime of runtimes.values()) {
-      if (runtime.video) runtime.video.playbackRate = globalRate * (assetSpeeds.get(runtime.assetId) ?? 1);
+      if (runtime.video) {
+        runtime.video.playbackRate = globalRate * (assetSpeeds.get(runtime.assetId) ?? 1);
+        // 全局倍速变化 → 所有元素的实际速率都变了，统一在下一帧重新锚定。
+        anchorPending.add(runtime.assetId);
+      }
     }
   };
 
@@ -506,7 +558,11 @@ export function createPreviewFrameSource(
     if (assetSpeeds.get(assetId) === speed) return;
     assetSpeeds.set(assetId, speed);
     const runtime = runtimes.get(assetId);
-    if (runtime?.video) runtime.video.playbackRate = globalRate * speed;
+    if (runtime?.video) {
+      runtime.video.playbackRate = globalRate * speed;
+      // 片段倍速变化 → 下一帧强制锚定到新 sourceMs，消除错位画面。
+      anchorPending.add(assetId);
+    }
   };
 
   const onFrameReady = (listener: () => void): (() => void) => {
@@ -543,6 +599,7 @@ export function createPreviewFrameSource(
     runtimes.clear();
     preparing.clear();
     assetSpeeds.clear();
+    anchorPending.clear();
     announcedReady.clear();
     frameReadyListeners.clear();
     elementReadyListeners.clear();

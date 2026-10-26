@@ -26,7 +26,9 @@ import { AudioEngine } from '../audioEngine.js';
 import {
   DEFAULT_MASTER_GAIN,
   MAX_MASTER_GAIN,
+  clipGainMultiplierAt,
   createPreviewAudio,
+  envelopeGainAt,
   fadeGainAt,
   getActivePreviewAudio,
   getPreviewAudioDiagnostics,
@@ -704,6 +706,133 @@ describe('services/media/previewAudio', () => {
 
       // 0.5（clip 增益）× 0.5（包络爬到一半）
       expect(fixture.clipGain('clip_1')).toBeCloseTo(0.25, 6);
+    });
+  });
+
+  // ------------------------------------------------------------------
+  describe('音量包络（envelopeGainAt / clipGainMultiplierAt）', () => {
+    it('envelopeGainAt：无包络关键帧时恒为 1', () => {
+      const clip = makeClip({ startMs: 1000, durationMs: 2000 });
+      expect(envelopeGainAt(clip, 1000)).toBe(1);
+      expect(envelopeGainAt(clip, 2000)).toBe(1);
+      expect(envelopeGainAt(clip, 3000)).toBe(1);
+    });
+
+    it('envelopeGainAt：包络点处取该点增益，区间外 clamp 到最近节点增益', () => {
+      const clip = makeClip({
+        startMs: 0,
+        durationMs: 1000,
+        audio: {
+          muted: false,
+          gain: 1,
+          fadeInMs: 0,
+          fadeOutMs: 0,
+          envelope: [
+            { timeMs: 200, gain: 0.5 },
+            { timeMs: 800, gain: 1.5 },
+          ],
+        },
+      });
+      // 区间外（左）：clip 整段由 fadeGainAt 归零，包络返回 1（乘积仍为 0）
+      expect(envelopeGainAt(clip, -100)).toBe(1);
+      expect(envelopeGainAt(clip, 0)).toBe(0.5);
+      // 节点处
+      expect(envelopeGainAt(clip, 200)).toBeCloseTo(0.5, 6);
+      expect(envelopeGainAt(clip, 800)).toBeCloseTo(1.5, 6);
+      // 区间内右端（clip 终点）取末节点增益
+      expect(envelopeGainAt(clip, 1000)).toBe(1.5);
+      // 区间外（右）：同样由 fadeGainAt 归零，包络返回 1
+      expect(envelopeGainAt(clip, 5000)).toBe(1);
+      // 两节点之间线性插值
+      expect(envelopeGainAt(clip, 500)).toBeCloseTo(1.0, 6);
+    });
+
+    it('envelopeGainAt：增益被钳制到 [0,2]', () => {
+      const clip = makeClip({
+        startMs: 0,
+        durationMs: 1000,
+        audio: {
+          muted: false,
+          gain: 1,
+          fadeInMs: 0,
+          fadeOutMs: 0,
+          envelope: [
+            { timeMs: 100, gain: 5 },
+            { timeMs: 900, gain: -3 },
+          ],
+        },
+      });
+      expect(envelopeGainAt(clip, 100)).toBe(2);
+      expect(envelopeGainAt(clip, 900)).toBe(0);
+    });
+
+    it('clipGainMultiplierAt = fadeGainAt × envelopeGainAt（无 fade 时等于包络增益）', () => {
+      const clip = makeClip({
+        startMs: 0,
+        durationMs: 1000,
+        audio: {
+          muted: false,
+          gain: 1,
+          fadeInMs: 0,
+          fadeOutMs: 0,
+          envelope: [
+            { timeMs: 200, gain: 0.5 },
+            { timeMs: 800, gain: 1.5 },
+          ],
+        },
+      });
+      expect(clipGainMultiplierAt(clip, 200)).toBeCloseTo(0.5, 6);
+      expect(clipGainMultiplierAt(clip, 500)).toBeCloseTo(1.0, 6);
+    });
+
+    it('clipGainMultiplierAt：淡入与包络相乘', () => {
+      const clip = makeClip({
+        startMs: 0,
+        durationMs: 1000,
+        audio: {
+          muted: false,
+          gain: 1,
+          fadeInMs: 400,
+          fadeOutMs: 0,
+          envelope: [{ timeMs: 200, gain: 0.5 }],
+        },
+      });
+      // t=200：fade 爬到 0.5 × 包络 0.5 = 0.25
+      expect(clipGainMultiplierAt(clip, 200)).toBeCloseTo(0.25, 6);
+    });
+
+    it('实时增益 = clip.audio.gain × 包络曲线（预览逐帧写入 clipGain）', () => {
+      const doc = makeDoc([
+        makeTrack({
+          clips: [
+            makeClip({
+              audio: {
+                muted: false,
+                gain: 0.5,
+                fadeInMs: 0,
+                fadeOutMs: 0,
+                envelope: [
+                  { timeMs: 200, gain: 0.5 },
+                  { timeMs: 800, gain: 1.5 },
+                ],
+              },
+            }),
+          ],
+        }),
+      ]);
+      const fixture = createFixture({ doc });
+
+      fixture.controller.setPosition(200);
+      // 0.5 × 0.5 = 0.25
+      expect(fixture.clipGain('clip_1')).toBeCloseTo(0.25, 6);
+
+      fixture.controller.setPosition(500);
+      // 0.5 × 1.0（插值中点）= 0.5
+      expect(fixture.clipGain('clip_1')).toBeCloseTo(0.5, 6);
+
+      fixture.controller.setPosition(800);
+      // 0.5 × 1.5 = 0.75
+      expect(fixture.clipGain('clip_1')).toBeCloseTo(0.75, 6);
     });
   });
 

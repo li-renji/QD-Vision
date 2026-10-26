@@ -17,6 +17,7 @@ import {
   REFERENCE_CANVAS_HEIGHT,
   type Asset,
   type AssetType,
+  type AspectPreset,
   type CanvasSettings,
   type Clip,
   type ClipTextProps,
@@ -802,6 +803,8 @@ export const CLIP_PROPERTY_PATHS: readonly string[] = [
   'audio.muted',
   'audio.fadeInMs',
   'audio.fadeOutMs',
+  'audio.extracted',
+  'audio.envelope',
   'transform.x',
   'transform.y',
   'transform.scale',
@@ -825,6 +828,9 @@ export const CLIP_PROPERTY_PATHS: readonly string[] = [
   'label',
   'isOverlay',
   'zIndex',
+  'filter',
+  'filter.preset',
+  'filter.intensity',
 ];
 
 /** 数值型属性的取值范围钳制。 */
@@ -862,6 +868,11 @@ export function setClipProperty(
   const result = run(ctx.doc, (draft) => {
     const found = locateClip(draft, clipId);
     if (!found) throw new ClipNotFoundError(clipId);
+    // `filter.*` 子路径：clip 可能还没有 filter 对象，先补一个缺省值再写入，
+    // 避免在 undefined 上取属性崩溃。
+    if (path.startsWith('filter.') && !found.clip.filter) {
+      found.clip.filter = { preset: 'none', intensity: 1 };
+    }
     applyProperty(found.clip as unknown as Draft<Clip>, path, nextValue);
   });
 
@@ -930,19 +941,42 @@ export function setTrackFlags(
 }
 
 /**
+ * 解析新增轨道的插入下标。
+ *
+ * 视频轨遵循剪辑软件惯例（剪映 / Premiere）：**主轨道顶格**——
+ * 新视频轨插到第一条视频轨正下方；一条视频轨都没有时插到最顶部。
+ * 显式传入 `index` 时永远服从调用方（测试 / 未来模板用）。
+ * 其它类型轨道保持追加到末尾。
+ */
+function resolveTrackInsertIndex(tracks: readonly Track[], input: AddTrackInput): number {
+  if (input.index !== undefined && input.index >= 0 && input.index <= tracks.length) {
+    return input.index;
+  }
+  if (input.type === 'video') {
+    const firstVideo = tracks.findIndex((track) => track.type === 'video');
+    return firstVideo === -1 ? 0 : firstVideo + 1;
+  }
+  return tracks.length;
+}
+
+/**
  * 新增轨道。
+ *
+ * ⚠️ 不变式：**数组下标 === `order`**。`orderedTracks` 按 `order` 升序渲染，
+ * 因此插入后必须重排 `order`，否则 splice 进去的轨道视觉位置会错位
+ * （顶格 / 插队全部失效）。
  */
 export function addTrack(ctx: OperationContext, input: AddTrackInput): OperationResult {
   const id = newTrackId();
-  const maxOrder = ctx.doc.tracks.reduce((max, track) => Math.max(max, track.order), -1);
   const height = input.height ?? DEFAULT_TRACK_HEIGHT[input.type];
 
   const result = run(ctx.doc, (draft) => {
+    const index = resolveTrackInsertIndex(draft.tracks, input);
     const track: Draft<Track> = {
       id,
       type: input.type,
       name: input.name,
-      order: maxOrder + 1,
+      order: index,
       muted: false,
       hidden: false,
       locked: false,
@@ -950,12 +984,11 @@ export function addTrack(ctx: OperationContext, input: AddTrackInput): Operation
       clips: [],
     } as Draft<Track>;
 
-    const index = input.index;
-    if (index === undefined || index < 0 || index > draft.tracks.length) {
-      draft.tracks.push(track);
-    } else {
-      draft.tracks.splice(index, 0, track);
-    }
+    draft.tracks.splice(index, 0, track);
+    // 数组顺序即层级顺序：重排 order 保持「数组下标 === order」不变式。
+    draft.tracks.forEach((item, position) => {
+      item.order = position;
+    });
   });
 
   return { ...result, selectedClipId: null };
@@ -970,6 +1003,119 @@ export function removeTrack(ctx: OperationContext, trackId: string): OperationRe
 
   const result = run(ctx.doc, (draft) => {
     draft.tracks = draft.tracks.filter((item) => item.id !== trackId);
+    // 删除后同样重排 order，避免出现「断号」导致相邻交换逻辑误判。
+    draft.tracks.forEach((item, position) => {
+      item.order = position;
+    });
+  });
+
+  return { ...result, selectedClipId: null };
+}
+
+/**
+ * 从视频轨提取音频到独立音频轨。
+ *
+ * 视频 clip 的音频默认与画面同在视频轨（「音画同轨」）。右键视频轨「提取音频」
+ * 后，把每个**有声音且尚未提取**的 clip 的音频拆到一条新建的音频轨（位于源视频轨
+ * 正下方），原视频 clip 的音频置为静音并打上 `extracted` 标记，避免双声。
+ */
+export function extractAudio(ctx: OperationContext, trackId: string): OperationResult {
+  const track = ctx.doc.tracks.find((item) => item.id === trackId);
+  if (!track) throw new TrackNotFoundError(trackId);
+  if (track.type !== 'video') {
+    throw new InvalidOperationError('只能从视频轨道提取音频');
+  }
+
+  const sources = track.clips.filter((clip) => {
+    if (!clip.assetId) return false;
+    const asset = ctx.doc.assets[clip.assetId];
+    if (!asset?.hasAudio) return false;
+    if (clip.audio.extracted) return false;
+    return true;
+  });
+  if (sources.length === 0) {
+    throw new InvalidOperationError('该视频轨道没有可提取的音频');
+  }
+
+  const audioTrackId = newTrackId();
+  const audioClips = sources.map((clip) => {
+    const clipId = newClipId();
+    return {
+      id: clipId,
+      assetId: clip.assetId,
+      startMs: clip.startMs,
+      durationMs: clip.durationMs,
+      inMs: clip.inMs,
+      outMs: clip.outMs,
+      speed: clip.speed,
+      isOverlay: false,
+      zIndex: 0,
+      transform: { ...DEFAULT_TRANSFORM },
+      audio: {
+        ...DEFAULT_AUDIO_PROPS,
+        gain: clip.audio.gain,
+        muted: false,
+      },
+      label: clip.label,
+      ...(clip.filter ? { filter: { ...clip.filter } } : {}),
+    } as Draft<Clip>;
+  });
+
+  const result = run(ctx.doc, (draft) => {
+    const draftVideo = draftTrack(draft, trackId);
+    if (!draftVideo) throw new TrackNotFoundError(trackId);
+
+    // 源视频轨：将原 clip 音频标记已提取并静音。
+    for (const clip of draftVideo.clips) {
+      if (!clip.assetId) continue;
+      const asset = ctx.doc.assets[clip.assetId];
+      if (asset?.hasAudio && !clip.audio.extracted) {
+        clip.audio.muted = true;
+        clip.audio.extracted = true;
+      }
+    }
+
+    // 新建音频轨：插到源视频轨正下方（order + 1），其余轨道 order 顺延。
+    const insertOrder = (draftVideo.order ?? 0) + 1;
+    const audioCount = draft.tracks.filter((item) => item.type === 'audio').length;
+    const audioTrack: Draft<Track> = {
+      id: audioTrackId,
+      type: 'audio',
+      name: defaultTrackName('audio', audioCount + 1),
+      order: insertOrder,
+      muted: false,
+      hidden: false,
+      locked: false,
+      height: DEFAULT_TRACK_HEIGHT.audio,
+      clips: audioClips,
+    } as Draft<Track>;
+    draft.tracks.push(audioTrack);
+
+    // 重排 order 保持「数组下标 === order」不变式（insertOrder 让新轨插在视频轨下方）。
+    draft.tracks
+      .slice()
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .forEach((item, position) => {
+        item.order = position;
+      });
+  });
+
+  return { ...result, selectedClipId: null };
+}
+
+/**
+ * 重命名轨道。
+ */
+export function renameTrack(ctx: OperationContext, trackId: string, name: string): OperationResult {
+  const track = ctx.doc.tracks.find((item) => item.id === trackId);
+  if (!track) throw new TrackNotFoundError(trackId);
+  const trimmed = name.trim();
+  if (trimmed.length === 0) throw new InvalidOperationError('轨道名称不能为空');
+
+  const result = run(ctx.doc, (draft) => {
+    const draftTarget = draftTrack(draft, trackId);
+    if (!draftTarget) throw new TrackNotFoundError(trackId);
+    draftTarget.name = trimmed;
   });
 
   return { ...result, selectedClipId: null };
@@ -1144,10 +1290,40 @@ export function setExportSettings(ctx: OperationContext, patch: Partial<ExportSe
 }
 
 /**
+ * 已知比例预设的基准尺寸（与 `CanvasSettingsBar` 的 ASPECTS 保持一致）。
+ *
+ * 抽成 domain 常量，避免「UI 改预设、domain 认不出」的两处漂移。
+ */
+const ASPECT_PRESET_DIMS: ReadonlyArray<{ value: AspectPreset; width: number; height: number }> = [
+  { value: '16:9', width: 1920, height: 1080 },
+  { value: '9:16', width: 1080, height: 1920 },
+  { value: '1:1', width: 1080, height: 1080 },
+  { value: '4:5', width: 1080, height: 1350 },
+];
+
+/**
+ * 依据宽高推断比例预设；不匹配任何已知比例时归为 `custom`。
+ *
+ * 纯函数：只比较宽高比（容差 1%），与具体像素值无关 —— 这样用户把画布
+ * 设成 1280×720 也会被识别为 `16:9`，比例下拉框因此能正确高亮。
+ */
+export function matchAspectPreset(width: number, height: number): AspectPreset {
+  if (!(width > 0) || !(height > 0)) return 'custom';
+  const ratio = width / height;
+  for (const preset of ASPECT_PRESET_DIMS) {
+    if (Math.abs(ratio - preset.width / preset.height) < 0.01) return preset.value;
+  }
+  return 'custom';
+}
+
+/**
  * 修改画布尺寸。
  *
  * `transform.x/y` 按新旧宽高比换算，`text.fontSize` 按新画布高 / 1080 换算，
  * 保证视觉位置在比例变更后保持一致（PRD §4.1 / FR-026①）。
+ *
+ * 同时回写 `aspectPreset` —— 否则比例下拉框（受控于 `aspectPreset`）不会
+ * 随尺寸变化更新，用户看到的是「选了 9:16 却仍显示 16:9」，即「比例调不了」。
  */
 export function resizeCanvas(ctx: OperationContext, width: number, height: number): OperationResult {
   const oldWidth = ctx.doc.settings.canvas.width;
@@ -1155,16 +1331,35 @@ export function resizeCanvas(ctx: OperationContext, width: number, height: numbe
   const scaleX = oldWidth > 0 ? width / oldWidth : 1;
   const scaleY = oldHeight > 0 ? height / oldHeight : 1;
   const fontScale = height / REFERENCE_CANVAS_HEIGHT;
+  const nextPreset = matchAspectPreset(width, height);
 
   const result = run(ctx.doc, (draft) => {
     draft.settings.canvas.width = width;
     draft.settings.canvas.height = height;
+    draft.settings.canvas.aspectPreset = nextPreset;
     for (const track of draft.tracks) {
       for (const clip of track.clips) {
-        clip.transform.x = clip.transform.x * scaleX;
-        clip.transform.y = clip.transform.y * scaleY;
-        if (clip.text) {
-          clip.text.fontSize = clip.text.fontSize * fontScale;
+        if (clip.assetId !== null && !clip.isOverlay) {
+          // 主画面媒体 clip（视频 / 图片）：切换比例时**重新构图**为「铺满新画布」
+          // （cover 居中、scale=1）。这样预览画面填满新画布，所见即所选比例
+          // （剪映 / CapCut 行为）。
+          //
+          // ⚠️ 不能沿用下面的 x/y 等比换算：`transform.x/y` 是**归一化**坐标
+          // （0.5 = 画布中心，见 compositor 的 `centerX = transform.x * canvasWidth`），
+          // 再乘一次宽高比等于**双重换算** —— 居中的主片段会被挪偏、露出黑边，
+          // 这正是「预览显示的不是我选的比例」的根因之一。
+          clip.transform.fit = 'cover';
+          clip.transform.x = 0.5;
+          clip.transform.y = 0.5;
+          clip.transform.scale = 1;
+        } else {
+          // 叠加层（PIP）与文字 / 字幕：保持既有换算语义（FR-026①）——
+          // 归一化相对位置按宽高比缩放、字号按画布高度缩放。
+          clip.transform.x = clip.transform.x * scaleX;
+          clip.transform.y = clip.transform.y * scaleY;
+          if (clip.text) {
+            clip.text.fontSize = clip.text.fontSize * fontScale;
+          }
         }
       }
     }

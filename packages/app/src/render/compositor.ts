@@ -19,6 +19,7 @@ import { orderedTracks } from '../domain/timeline/selectors.js';
 import { drawImageLayer } from './drawImage.js';
 import { drawTextLayer } from './drawText.js';
 import { applyTransform } from './drawTransform.js';
+import { clipFilterCss } from './filters.js';
 
 /** 最多支持的 PIP 层数。 */
 export const MAX_OVERLAY_LAYERS = 4;
@@ -131,12 +132,14 @@ export function renderFrame(
     for (const clip of track.clips) {
       if (!isActiveAt(clip, timeMs)) continue;
       if (!clip.text) continue;
+      ctx.filter = clipFilterCss(clip.filter);
       drawTextLayer(ctx, {
         text: clip.text,
         transform: clip.transform,
         canvasWidth,
         canvasHeight,
       });
+      ctx.filter = 'none';
     }
   }
 
@@ -172,6 +175,10 @@ function drawVideoClip(
   const contentWidth = asset?.width || sourceWidth(frame) || canvasWidth;
   const contentHeight = asset?.height || sourceHeight(frame) || canvasHeight;
 
+  // 滤镜：在 applyTransform 的 save() 之前设置，使本次绘制带上滤镜；
+  // 由于 drawImageLayer 的 restore() 只回到「调用前」状态，必须在调用后
+  // 显式复位，避免滤镜残留污染后续 clip / 图层。
+  ctx.filter = clipFilterCss(clip.filter);
   drawImageLayer(ctx, frame, {
     fit: clip.transform.fit,
     transform: clip.transform,
@@ -182,6 +189,7 @@ function drawVideoClip(
     // 圆角仅对画中画生效
     cornerRadius: clip.isOverlay ? clip.transform.cornerRadius : 0,
   });
+  ctx.filter = 'none';
 }
 
 /** 绘制当前激活的字幕条目。 */

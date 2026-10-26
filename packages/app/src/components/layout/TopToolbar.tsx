@@ -3,6 +3,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Button } from '../common/Button.js';
 import { IconButton } from '../common/IconButton.js';
 import { Icon } from '../common/Icon.js';
@@ -12,7 +13,8 @@ import { useHistoryStore } from '../../state/historyStore.js';
 import { usePlaybackStore } from '../../state/playbackStore.js';
 import { useUiStore } from '../../state/uiStore.js';
 import { unlockPreviewAudio } from '../../services/media/previewAudio.js';
-import { redo, undo } from '../../state/actions.js';
+import { exportProjectFile, redo, saveProjectNow, undo } from '../../state/actions.js';
+import { toast } from '../common/Toast.js';
 import { formatTimecode } from '@clipcut/shared-types';
 import { clsx } from '../../utils/clsx.js';
 
@@ -22,18 +24,12 @@ export interface TopToolbarProps {
   onOpenSettings: () => void;
   /** 切换到工程列表。 */
   onOpenProjects: () => void;
-  /** 触发导出。 */
-  onExport: () => void;
 }
 
 /**
  * 顶部工具栏。
  */
-export function TopToolbar({
-  onOpenSettings,
-  onOpenProjects,
-  onExport,
-}: TopToolbarProps): JSX.Element {
+export function TopToolbar({ onOpenSettings, onOpenProjects }: TopToolbarProps): JSX.Element {
   const { t } = useTranslation();
   const fps = useProjectStore((state) => state.doc.settings.canvas.fps);
   const durationMs = useProjectStore((state) => state.doc.meta.durationMs);
@@ -68,9 +64,49 @@ export function TopToolbar({
         <Button size="sm" variant="ghost" onClick={onOpenProjects}>
           {t('toolbar.open')}
         </Button>
-        <Button size="sm" variant="ghost" onClick={onExport}>
-          {t('toolbar.export')}
-        </Button>
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <Button size="sm" variant="ghost" aria-label={t('toolbar.exportSave')}>
+              {t('toolbar.exportSave')}
+            </Button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content
+              align="start"
+              sideOffset={4}
+              className="z-50 min-w-[180px] rounded border border-[var(--cc-border)] bg-[var(--cc-bg-panel)] p-1 shadow-xl"
+            >
+              <DropdownMenu.Item
+                className="cursor-pointer rounded px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-[var(--cc-bg-elevated)]"
+                onSelect={() => {
+                  saveProjectNow();
+                  toast(t('common.toast.saved'), 'success');
+                }}
+              >
+                {t('menu.save')}
+              </DropdownMenu.Item>
+              <DropdownMenu.Item
+                className="cursor-pointer rounded px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-[var(--cc-bg-elevated)]"
+                onSelect={() => {
+                  exportProjectFile();
+                  toast(t('common.toast.saved'), 'success');
+                }}
+              >
+                {t('menu.exportProject')}
+              </DropdownMenu.Item>
+              <DropdownMenu.Separator className="my-1 h-px bg-[var(--cc-border)]" />
+              <DropdownMenu.Item
+                className="cursor-pointer rounded px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-[var(--cc-bg-elevated)]"
+                onSelect={() => {
+                  useUiStore.getState().setInspectorTab('export');
+                  toast(t('menu.exportVideoHint'), 'info');
+                }}
+              >
+                {t('menu.exportVideo')}
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
       </div>
 
       <div className="mx-2 h-5 w-px shrink-0 bg-[var(--cc-border)]" />

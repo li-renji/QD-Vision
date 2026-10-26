@@ -402,6 +402,80 @@ describe('services/media/previewFrameSource', () => {
     expect(fixture.videos[0]?.playbackRate).toBe(0.5);
   });
 
+  it('倍速变化时，播放中下一帧把元素精确锚定到 sourceMs（漂移在容差内也纠正）', async () => {
+    const asset = makeVideoAsset('asset_a');
+    await fixture.source.ensureAsset(asset);
+    const video = fixture.videos[0];
+
+    fixture.source.setPlaying(true);
+
+    // 元素停在 2.05s：相对 sourceMs=2000 有 50ms 漂移（< 80ms 容差）。
+    video!.currentTime = 2.05;
+    // 无倍速变化时，容差内不纠正（避免每帧 seek 卡顿）。
+    fixture.source.getFrame('asset_a', 2000);
+    expect(video!.currentTime).toBe(2.05);
+
+    // 切倍速 → 播放中下一帧强制锚定到 2000，把累积的小漂移一次性校正，
+    // 否则变速后画面会带着旧偏移继续，即「帧不协调」。
+    fixture.source.setAssetSpeed('asset_a', 2);
+    expect(video?.playbackRate).toBe(2);
+    fixture.source.getFrame('asset_a', 2000);
+    expect(video!.currentTime).toBe(2);
+  });
+
+  it('seek 进行中不重复发起纠正（seeking 闸门防 seek 风暴）', async () => {
+    const asset = makeVideoAsset('asset_a');
+    await fixture.source.ensureAsset(asset);
+    const video = fixture.videos[0];
+
+    fixture.source.setPlaying(true);
+    // 远端取帧触发一次纠正性 seek（seeking 置位）。
+    video!.currentTime = 1;
+    fixture.source.getFrame('asset_a', 5000);
+    expect(video!.currentTime).toBe(5);
+
+    // 模拟 seek 尚未回执：把 currentTime 拨回旧值，且**不**派发 'seeked'。
+    // 此时 seeking 仍为 true → 即使漂移依旧巨大，也不应再改 currentTime。
+    video!.currentTime = 1;
+    fixture.source.getFrame('asset_a', 5000);
+    expect(video!.currentTime).toBe(1);
+
+    // 漂移已收敛（元素回到目标）→ 闸门兜底解锁，恢复正常纠正能力。
+    video!.currentTime = 5;
+    fixture.source.getFrame('asset_a', 5000);
+    video!.currentTime = 1;
+    fixture.source.getFrame('asset_a', 5000);
+    expect(video!.currentTime).toBe(5);
+  });
+
+  it('高倍速下漂移容差按倍速缩放，避免每帧 seek 的卡顿', async () => {
+    const asset = makeVideoAsset('asset_a');
+    await fixture.source.ensureAsset(asset);
+    const video = fixture.videos[0];
+
+    fixture.source.setPlaying(true);
+    // 4× 倍速。
+    fixture.source.setAssetSpeed('asset_a', 4);
+
+    // 第一次 getFrame：消耗「倍速切换」的强制锚定 → seek 到 2000（seeking 置位）。
+    fixture.source.getFrame('asset_a', 2000);
+    expect(video!.currentTime).toBe(2);
+    // 元素已在目标处 → 下一次 getFrame 走兜底解锁，seeking 复位。
+    fixture.source.getFrame('asset_a', 2000);
+
+    // 4× 下的一次帧丢弃小抖动：元素落后 sourceMs 300ms（源时间）。
+    // 300ms > 未缩放的 80ms 容差，但 < 4× 缩放的 320ms 容差 → **不纠正**，
+    // 否则稳态下每帧都 seek，表现为「4× 很卡、掉帧严重」。
+    video!.currentTime = 2.3;
+    fixture.source.getFrame('asset_a', 2000);
+    expect(video!.currentTime).toBe(2.3);
+
+    // 超过缩放容差（500ms > 320ms）→ 仍会纠正，不会因放宽而失控。
+    video!.currentTime = 1.5;
+    fixture.source.getFrame('asset_a', 2000);
+    expect(video!.currentTime).toBe(2);
+  });
+
   it('onFrameReady 在异步帧就绪时被通知，可用于立刻重绘', async () => {
     const asset = makeVideoAsset('asset_a');
     let notified = 0;

@@ -9,10 +9,12 @@
 import { memo } from 'react';
 import type { Asset, Clip } from '@clipcut/shared-types';
 import { useUiStore } from '../../state/uiStore.js';
+import { setClipProperty } from '../../state/actions.js';
 import { useClipDrag } from '../../hooks/useClipDrag.js';
 import { ContextMenu } from '../common/ContextMenu.js';
 import { ClipTrimHandle } from './ClipTrimHandle.js';
 import { WaveformCanvas } from './WaveformCanvas.js';
+import { VolumeEnvelope } from './VolumeEnvelope.js';
 import { TimelineContextMenu } from './TimelineContextMenu.js';
 import { clsx } from '../../utils/clsx.js';
 
@@ -87,6 +89,14 @@ export const ClipView = memo(function ClipView({
           <span className="pointer-events-none absolute right-1 top-0.5 rounded bg-black/50 px-1 text-[9px] text-[var(--cc-warning)]">
             PIP
           </span>
+        ) : null}
+
+        {asset?.type === 'video' || asset?.type === 'audio' ? (
+          <VolumeEnvelope
+            clip={clip}
+            pxPerSecond={pxPerSecond}
+            onChange={(points) => setClipProperty(clip.id, 'audio.envelope', points)}
+          />
         ) : null}
 
         {!trackLocked ? (

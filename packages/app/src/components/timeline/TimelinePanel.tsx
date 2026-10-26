@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TrackType } from '@clipcut/shared-types';
 import { useTranslation } from '../../i18n/index.js';
 import { useProjectStore } from '../../state/projectStore.js';
-import { useUiStore } from '../../state/uiStore.js';
+import { MAX_PX_PER_SECOND, MIN_PX_PER_SECOND, useUiStore } from '../../state/uiStore.js';
 import { usePlaybackStore } from '../../state/playbackStore.js';
 import { orderedTracks } from '../../domain/timeline/selectors.js';
 import { computeDropStartMs } from '../../domain/timeline/snapping.js';
@@ -31,12 +31,11 @@ export function TimelinePanel(): JSX.Element {
   const doc = useProjectStore((state) => state.doc);
   const assets = useProjectStore((state) => state.doc.assets);
   const selectedClipIds = useUiStore((state) => state.selectedClipIds);
-  const selectedTrackId = useUiStore((state) => state.selectedTrackId);
+  const selectedTrackIds = useUiStore((state) => state.selectedTrackIds);
   const setSelectedClipIds = useUiStore((state) => state.setSelectedClipIds);
   const toggleSelectedClip = useUiStore((state) => state.toggleSelectedClip);
   const setSelectedTrackId = useUiStore((state) => state.setSelectedTrackId);
   const pxPerSecond = useUiStore((state) => state.pxPerSecond);
-  const setPxPerSecond = useUiStore((state) => state.setPxPerSecond);
   const scrollLeft = useUiStore((state) => state.scrollLeft);
   const setScrollLeft = useUiStore((state) => state.setScrollLeft);
   const dragSession = useUiStore((state) => state.dragSession);
@@ -82,25 +81,67 @@ export function TimelinePanel(): JSX.Element {
     [setSelectedClipIds, toggleSelectedClip],
   );
 
-  // Ctrl+滚轮：以鼠标为锚点缩放
-  const handleWheel = (event: React.WheelEvent<HTMLDivElement>): void => {
-    if (!event.ctrlKey && !event.metaKey) return;
-    event.preventDefault();
+  /**
+   * Ctrl+滚轮：以鼠标为锚点缩放时间线。
+   *
+   * ⚠️ 必须挂**原生非被动**监听器：React 17+ 把 `onWheel` 以
+   * `{ passive: true }` 注册到根容器，`preventDefault()` 会被静默忽略，
+   * 表现为「Ctrl+滚轮把整个网页放大」而不是缩放时间线。
+   *
+   * 锚点用 DOM 实时 `scrollLeft`（store 值可能因合成时序短暂滞后）；
+   * 缩放后内容宽度变化，浏览器可能把 `scrollLeft` 钳制在旧最大值，
+   * 导致 store 与 DOM 不一致——虚拟化窗口按 store 渲染，用户就会看到
+   * 「轨道消失」。因此缩放后由下面的 effect 在提交后重新对齐 DOM。
+   */
+  useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
 
-    const rect = element.getBoundingClientRect();
-    const pointerX = event.clientX - rect.left;
-    const timeAtPointer = (scrollLeft + pointerX) / pxPerSecond;
+    const handleWheel = (event: WheelEvent): void => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
 
-    const factor = event.deltaY < 0 ? 1.2 : 1 / 1.2;
-    const next = Math.min(200, Math.max(0.5, pxPerSecond * factor));
-    setPxPerSecond(next);
+      const state = useUiStore.getState();
+      const rect = element.getBoundingClientRect();
+      const pointerX = event.clientX - rect.left;
+      const liveScroll = element.scrollLeft;
+      const timeAtPointer = (liveScroll + pointerX) / state.pxPerSecond;
 
-    const nextScroll = timeAtPointer * next - pointerX;
-    setScrollLeft(Math.max(0, nextScroll));
-    element.scrollLeft = Math.max(0, nextScroll);
-  };
+      const factor = event.deltaY < 0 ? 1.2 : 1 / 1.2;
+      const next = Math.min(
+        MAX_PX_PER_SECOND,
+        Math.max(MIN_PX_PER_SECOND, state.pxPerSecond * factor),
+      );
+      if (next === state.pxPerSecond) return;
+      state.setPxPerSecond(next);
+
+      // 锚点保持：指针下的时间点在缩放后仍在指针下。
+      const nextScroll = Math.max(0, timeAtPointer * next - pointerX);
+      state.setScrollLeft(nextScroll);
+    };
+
+    element.addEventListener('wheel', handleWheel, { passive: false });
+    return () => element.removeEventListener('wheel', handleWheel);
+  }, []);
+
+  /**
+   * 缩放提交后，把 store 中的 `scrollLeft` 重新应用到 DOM。
+   *
+   * 内容宽度依赖 `pxPerSecond`：缩放后如果 `scrollLeft` 超过了新/旧宽度的
+   * 可滚范围，浏览器会静默钳制，store 与 DOM 从此分叉——虚拟化窗口按
+   * store 值渲染，视觉上却是另一段时间，表现为「缩放后轨道不见了」。
+   */
+  const lastPxPerSecondRef = useRef(pxPerSecond);
+  useEffect(() => {
+    if (lastPxPerSecondRef.current === pxPerSecond) return;
+    lastPxPerSecondRef.current = pxPerSecond;
+    const element = scrollRef.current;
+    if (!element) return;
+    const target = useUiStore.getState().scrollLeft;
+    if (Math.abs(element.scrollLeft - target) > 0.5) {
+      element.scrollLeft = target;
+    }
+  }, [pxPerSecond]);
 
   // 落点 clientX → 未吸附的原始起点（毫秒）。
   const rawStartFromClientX = (clientX: number): number => {
@@ -257,7 +298,7 @@ export function TimelinePanel(): JSX.Element {
   };
 
   return (
-    <div className="flex h-full flex-col" onWheel={handleWheel}>
+    <div className="flex h-full flex-col">
       <TimelineToolbar />
 
       {/* 时间线区域：统一接管拖放（命中轨道才导入），并显示轨道内拖拽提示浮层。 */}
@@ -275,8 +316,8 @@ export function TimelinePanel(): JSX.Element {
             <TrackHeader
               key={track.id}
               track={track}
-              selected={selectedTrackId === track.id}
-              onSelect={setSelectedTrackId}
+              selected={selectedTrackIds.includes(track.id)}
+              onSelect={(id, additive) => setSelectedTrackId(id, additive)}
             />
           ))}
         </div>
@@ -302,11 +343,11 @@ export function TimelinePanel(): JSX.Element {
                     track={track}
                     assets={assets}
                     selectedClipIds={selectedClipIds}
-                    selectedTrackId={selectedTrackId}
+                    selectedTrackIds={selectedTrackIds}
                     windowStartMs={startMs}
                     windowEndMs={endMs}
                     onSelectClip={handleSelectClip}
-                    onSelectTrack={setSelectedTrackId}
+                    onSelectTrack={(id, additive) => setSelectedTrackId(id, additive)}
                   />
                 </div>
               ))}

@@ -31,7 +31,7 @@ export function MediaPanel(): JSX.Element {
   const assets = useProjectStore((state) => state.doc.assets);
   const filter = useUiStore((state) => state.mediaFilter);
   const view = useUiStore((state) => state.mediaView);
-  const selectedTrackId = useUiStore((state) => state.selectedTrackId);
+  const selectedTrackIds = useUiStore((state) => state.selectedTrackIds);
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [sort, setSort] = useState<MediaSort>('importedAt');
@@ -201,7 +201,7 @@ export function MediaPanel(): JSX.Element {
 
       <div className="border-t border-[var(--cc-border)] p-1">
         <span className="text-[10px] text-[var(--cc-fg-muted)]">
-          {selectedTrackId ? '' : t('timeline.empty')}
+          {selectedTrackIds.length === 0 ? t('timeline.empty') : ''}
         </span>
       </div>
     </div>

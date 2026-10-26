@@ -54,6 +54,7 @@ export const CLIP_NUMERIC_RANGES: Readonly<Record<string, NumericRange>> = {
   'text.lineHeight': [0.1, 10],
   'text.letterSpacing': [-100, 100],
   'zIndex': [0, 1000],
+  'filter.intensity': [0, 1],
 };
 
 /**

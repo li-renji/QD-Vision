@@ -23,6 +23,7 @@ export {
   type TextBlockMetrics,
 } from './drawText.js';
 export { applyCornerRadius, applyTransform, type TransformApplyOptions } from './drawTransform.js';
+export { FILTER_PRESET_IDS, clipFilterCss } from './filters.js';
 export {
   DEFAULT_FRAME_CACHE_CAPACITY,
   FRAME_BUCKET_MS,

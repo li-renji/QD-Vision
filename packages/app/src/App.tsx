@@ -18,8 +18,6 @@ import {
   undo,
 } from './state/actions.js';
 import { loadProject, saveProject } from './services/storage/projectRepo.js';
-import { serialize } from './domain/project/serialize.js';
-import { getPlatformBridge } from './platform/index.js';
 import { useHotkeys, type HotkeyHandlers } from './hooks/useHotkeys.js';
 import { useFileDrop } from './hooks/useFileDrop.js';
 import { AppLayout } from './components/layout/AppLayout.js';
@@ -83,18 +81,6 @@ export function App(): JSX.Element {
     },
     [t],
   );
-
-  // 导出工程文件
-  const exportProject = useCallback((): void => {
-    const current = useProjectStore.getState().doc;
-    const content = serialize(current);
-    void getPlatformBridge()
-      .saveFile(`${current.name || 'project'}.clipcut.json`, new Blob([content], { type: 'application/json' }))
-      .then(() => toast(t('common.toast.saved'), 'success'))
-      .catch(() => {
-        /* 用户取消 */
-      });
-  }, [t]);
 
   // 快捷键
   useHotkeys(
@@ -178,7 +164,6 @@ export function App(): JSX.Element {
               void saveProject(doc);
               setView('projects');
             }}
-            onExport={exportProject}
           />
         }
         media={<MediaPanel />}

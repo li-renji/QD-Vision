@@ -222,7 +222,18 @@
         "transform": { "$ref": "#/$defs/clipTransform" },
         "audio": { "$ref": "#/$defs/clipAudioProps" },
         "text": { "$ref": "#/$defs/clipTextProps" },
-        "label": { "type": ["string", "null"] }
+        "label": { "type": ["string", "null"] },
+        "filter": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "preset": {
+              "type": "string",
+              "enum": ["none", "vivid", "mono", "vintage", "cool", "warm", "fade", "sharp"]
+            },
+            "intensity": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
       }
     },
     "track": {
